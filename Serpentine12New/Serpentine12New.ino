@@ -9,7 +9,7 @@ const unsigned short NUM_SERVOS = 12;
 Servo robotServos[NUM_SERVOS];
 
 // Define servo objects for the snake segments
-Servo s1; 
+/* Servo s1; 
 Servo s2;
 Servo s3;
 Servo s4; 
@@ -20,29 +20,29 @@ Servo s8;
 Servo s9; 
 Servo s10;
 Servo s11;
-Servo s12;
+Servo s12; */
   
 // Define variables
 int forwardPin = 14;  // Remote control movement pins
 int reversePin = 15;
-int rightPin = 16;
-int leftPin = 17;
+int rightPin = 17;
+int leftPin = 16;
 
 int forwardVal = 0;  // Remote control variables
 int reverseVal = 0;
 int rightVal = 0;
 int leftVal = 0;
 
-int counter = 0; // Loop counter variable
+// int counter = 0; // Loop counter variable
 float lag = .5236; // Phase lag between segments
-float frequency = 0.5; // Oscillation frequency of segments.
+float frequency = 0.35; // Oscillation frequency of segments.
 int amplitude = 35; // Amplitude of the serpentine motion of the snake
-int rightOffset = 5; // Right turn offset
-int leftOffset = -5; // Left turn offset
-int offset = 6; // Variable to correct servos that are not exactly centered
-int delayTime = 5; // Delay between limb movements
+int rightOffset = 7; // Right turn offset
+int leftOffset = -7; // Left turn offset
+// int offset = 6; // Variable to correct servos that are not exactly centered
+// int delayTime = 5; // Delay between limb movements
 int startPause = 5000;  // Delay time to position robot
-int test = -3; // Test varialble takes values from -6 to +5
+// int test = -3; // Test varialble takes values from -6 to +5
 
 float forwardAngle = 93.0;
 float centerAngle = forwardAngle;
@@ -51,7 +51,7 @@ float waveOffsetMultiplier = 1.0;
 float waveValue = 0.0;
 bool runningWave = false,
      runningWavePrevious = runningWave;
-float turnRampRate = 0.5;
+float turnRampRate = 3;
 unsigned long currentTimeStamp,
               lastTimeStamp;
 
@@ -71,6 +71,8 @@ float coerceToRange(float lowerBound, float upperBound, float value)
 
 void setup() 
 { 
+  // Serial.begin(115200);
+  
 // Set movement pins as inputs
   pinMode(forwardPin, INPUT);
   pinMode(reversePin, INPUT);
@@ -90,8 +92,9 @@ void setup()
   
   for(int i = 0; i < NUM_SERVOS; i++)
   {
-    robotServos[i].attach(i + 2);
+    robotServos[i].attach(13 - i);
     robotServos[i].write(centerAngle+amplitude*cos(i * lag));
+    // Serial.print("Started servo connected to " + String(13 - i) + " with " + String(centerAngle+amplitude*cos(i * lag)) + ".\n"); 
   }
 
 
@@ -220,7 +223,8 @@ void loop()
   
       runningWave = true;
       centerAngle = forwardAngle + rightOffset;
-      waveOffsetMultiplier = 1.0;
+      // waveOffsetMultiplier = 1.0;
+      // Serial.println("Turning right...");
     }
   // Left turn
     else if (leftVal == HIGH){
@@ -275,7 +279,8 @@ void loop()
   
       runningWave = true;
       centerAngle = forwardAngle + leftOffset;
-      waveOffsetMultiplier = 1.0;
+      // Serial.println("Turning left...");
+      // waveOffsetMultiplier = 1.0;
     }
     else
     {
@@ -295,12 +300,13 @@ void loop()
       float elapsedTime = (currentTimeStamp - lastTimeStamp) / 1000.0;
       lastTimeStamp = currentTimeStamp;
 
-      waveValue += ((2 * 3.14159 * frequency) * (elapsedTime * waveOffsetMultiplier));
+      waveValue += ((-2 * 3.14159 * frequency) * (elapsedTime * waveOffsetMultiplier));
 
       float maxAngleChange = turnRampRate * elapsedTime;
 
       currentCenterAngle = coerceToRange(currentCenterAngle - maxAngleChange, currentCenterAngle + maxAngleChange, centerAngle);
-
+      // Serial.println("Current center angle: " + String(currentCenterAngle));
+      
       for(int i = 0; i < NUM_SERVOS; i++)
       {
         // s1.write(currentAngle + amplitude*cos(frequency*counter*3.14159/180+5*lag));
