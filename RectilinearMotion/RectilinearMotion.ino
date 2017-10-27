@@ -5,7 +5,7 @@ of a snake robot with 12 servos
 
 #include <Servo.h>
 
-const unsigned short NUM_SERVOS = 10;
+const unsigned short NUM_SERVOS = 12;
 Servo robotServos[NUM_SERVOS];
   
 // Define variables
@@ -36,7 +36,8 @@ bool runningWave = false,
 
 bool runningTurn = false;
 enum RobotTurnDirection {LEFT_TURN, RIGHT_TURN};
-RobotTurnDirection currentTurnDirection = RobotTurnDirection::LEFT_TURN;
+RobotTurnDirection currentTurnDirection = RobotTurnDirection::LEFT_TURN,
+                   previousTurnDirection = RobotTurnDirection::LEFT_TURN;
 
 const float VERTICAL_TURN_UP_ANGLE = forwardAngle - 30.0,
             VERTICAL_TURN_DOWN_ANGLE = forwardAngle + 30.0,
@@ -45,7 +46,9 @@ const float VERTICAL_TURN_UP_ANGLE = forwardAngle - 30.0,
 
 // 260.0 max
 float horizontalTurnRampRate = 20.0,
-      verticalTurnRampRate = 20.0; // Maximum rate at which turn offsets are ramped (degrees per second)
+      verticalTurnRampRate = 20.0,
+      horizontalResetRampRate = 100.0,
+      verticalResetRampRate = 100.0; // Maximum rate at which turn offsets are ramped (degrees per second)
 float horizontalTurnSetPoint = forwardAngle,
       horizontalTurnCurrentValue = horizontalTurnSetPoint,
       verticalTurnSetPoint = VERTICAL_TURN_UP_ANGLE,
@@ -168,40 +171,45 @@ void loop()
     rightVal = digitalRead(rightPin);
     leftVal = digitalRead(leftPin);
 
-    // Right turn
-    if (rightVal == HIGH){
-      runningTurn = true;
-      currentTurnDirection = RobotTurnDirection::RIGHT_TURN;
-      // waveOffsetMultiplier = 1.0;
-      // Serial.println("Turning right...");
-    }
-    // Left turn
-    else if (leftVal == HIGH){
-      runningTurn = true;
-      currentTurnDirection = RobotTurnDirection::LEFT_TURN;
-      // Serial.println("Turning left...");
-      // waveOffsetMultiplier = 1.0;
-    }
-    // Straight movement
-    else
-    {
-      runningTurn = false;
-    }
+    // Serial.println("Pin states: Fwd " + String(forwardVal) + " | Rev " + String(reverseVal) + " | Right " + String(rightVal) + " | Left " + String(leftVal));
     
     // Forward motion
     if (forwardVal == HIGH){
       runningWave = true;
+      runningTurn = false;
       reverseDirection = false;
     }
     // Reverse motion
     else if (reverseVal == HIGH){
       runningWave = true;
+      runningTurn = false;
       reverseDirection = true;
     }
-    // Stop if a turn is not being made
+    // Check if a turn is being made
     else
     {
       runningWave = false;
+
+      // Right turn
+      if (rightVal == HIGH){
+        runningTurn = true;
+        currentTurnDirection = RobotTurnDirection::RIGHT_TURN;
+        // waveOffsetMultiplier = 1.0;
+        // Serial.println("Turning right...");
+      }
+      // Left turn
+      else if (leftVal == HIGH){
+        runningTurn = true;
+        
+        currentTurnDirection = RobotTurnDirection::LEFT_TURN;
+        // Serial.println("Turning left...");
+        // waveOffsetMultiplier = 1.0;
+      }
+      // Straight movement
+      else
+      {
+        runningTurn = false;
+      }
     }
 
     // If the robot has just started running
@@ -244,15 +252,32 @@ void loop()
       }
     }
 
-    if(runningTurn)
+    if(runningTurn || runningWave)
     {
-      if((horizontalTurnCurrentValue == horizontalTurnSetPoint) && (verticalTurnCurrentValue == verticalTurnSetPoint))
+      float activeHorizontalRampRate = horizontalTurnRampRate,
+            activeVerticalRampRate = verticalTurnRampRate;
+      
+      if(runningTurn)
       {
-        advanceTurnSetPoints(currentTurnDirection, horizontalTurnSetPoint, verticalTurnSetPoint);
+        if(((horizontalTurnCurrentValue == horizontalTurnSetPoint) && (verticalTurnCurrentValue == verticalTurnSetPoint))
+            || (previousTurnDirection != currentTurnDirection))
+        {
+          advanceTurnSetPoints(currentTurnDirection, horizontalTurnSetPoint, verticalTurnSetPoint);
+        }
+  
+        previousTurnDirection = currentTurnDirection;
+      }
+      else
+      {
+        horizontalTurnSetPoint = forwardAngle;
+        verticalTurnSetPoint = VERTICAL_TURN_UP_ANGLE;
+
+        activeHorizontalRampRate = horizontalResetRampRate;
+        activeVerticalRampRate = verticalResetRampRate;
       }
 
-      float maxHorizontalAngleChange = horizontalTurnRampRate * elapsedTime,
-            maxVerticalAngleChange = verticalTurnRampRate * elapsedTime;
+      float maxHorizontalAngleChange = activeHorizontalRampRate * elapsedTime,
+            maxVerticalAngleChange = activeVerticalRampRate * elapsedTime;
 
       horizontalTurnCurrentValue = coerceToRange(horizontalTurnCurrentValue - maxHorizontalAngleChange,
                                                  horizontalTurnCurrentValue + maxHorizontalAngleChange, horizontalTurnSetPoint);
@@ -263,7 +288,7 @@ void loop()
       robotServos[NUM_SERVOS - 2].write(horizontalTurnCurrentValue);
       robotServos[NUM_SERVOS - 1].write(verticalTurnCurrentValue);
 
-      Serial.println("Wrote " + String(horizontalTurnCurrentValue) + " to horizontal servo.");
-      Serial.println("Wrote " + String(verticalTurnCurrentValue) + " to vertical servo.");
+      // Serial.println("Wrote " + String(horizontalTurnCurrentValue) + " to horizontal servo.");
+      // Serial.println("Wrote " + String(verticalTurnCurrentValue) + " to vertical servo.");
     }
 }
