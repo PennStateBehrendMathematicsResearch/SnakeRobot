@@ -5,8 +5,17 @@ of a snake robot with 12 servos
 
 #include <Servo.h>
 
+#include "StatisticalFunctions.h"
+
 const unsigned short NUM_SERVOS = 12;
 Servo robotServos[NUM_SERVOS];
+float servoAngles[NUM_SERVOS],
+      calculatedXPositions[NUM_SERVOS + 1],
+      calculatedYPositions[NUM_SERVOS + 1];
+
+const float HEAD_LENGTH = 13.75,
+            SEGMENT_LENGTH = 7.0,
+            TAIL_LENGTH = 11.5;
   
 // Define variables
 int forwardPin = 14;  // Remote control movement pins
@@ -20,8 +29,8 @@ int rightVal = 0;
 int leftVal = 0;
 
 float lag = .5236; // Phase lag between segments
-float frequency = 0.35; // Oscillation frequency of segments.
-int amplitude = 35; // Amplitude of the serpentine motion of the snake
+float frequency = 0.1; // Oscillation frequency of segments.
+int amplitude = 25; // Amplitude of the serpentine motion of the snake
 int rightOffset = 7; // Right turn offset
 int leftOffset = -7; // Left turn offset
 int startPause = 5000;  // Delay time to position robot
@@ -57,7 +66,7 @@ float coerceToRange(float lowerBound, float upperBound, float value)
 
 void setup() 
 { 
-  // Serial.begin(115200);
+  Serial.begin(115200);
   
   // Set movement pins as inputs
   pinMode(forwardPin, INPUT);
@@ -164,7 +173,30 @@ void loop()
       for(int i = 0; i < NUM_SERVOS; i++)
       {
         // s1.write(currentAngle + amplitude*cos(frequency*counter*3.14159/180+5*lag));
-        robotServos[i].write(currentCenterAngle + amplitude*sin(waveValue + (i * lag)));
+        servoAngles[i] = currentCenterAngle + amplitude*sin(waveValue + (i * lag));
+        robotServos[i].write(servoAngles[i]);
       }
+
+      float angleFromStart = 0.0;
+
+      calculatedXPositions[0] = HEAD_LENGTH;
+      calculatedYPositions[0] = 0.0;
+
+      for(int i = 1; i < (NUM_SERVOS + 1); i++)
+      {
+        float currentLength = (i < NUM_SERVOS) ? SEGMENT_LENGTH : TAIL_LENGTH;
+        
+        angleFromStart += (servoAngles[i - 1] - forwardAngle);
+        calculatedXPositions[i] = calculatedXPositions[i - 1] + currentLength * cos(M_PI * angleFromStart / 180.0);
+        calculatedYPositions[i] = calculatedYPositions[i - 1] + currentLength * sin(M_PI * angleFromStart / 180.0);
+      }
+
+      float xRegression = StatisticalFunctions::simpleLeastSquaresLinearRegressionSlope(calculatedXPositions, NUM_SERVOS + 1);
+      float yRegression = StatisticalFunctions::simpleLeastSquaresLinearRegressionSlope(calculatedYPositions, NUM_SERVOS + 1);
+
+      float headAngle = 180.0 * atan2(yRegression, xRegression) / M_PI;
+
+      Serial.print("Head angle: ");
+      Serial.println(headAngle);
     }
 }
