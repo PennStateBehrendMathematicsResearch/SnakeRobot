@@ -20,11 +20,10 @@ int reverseVal = 0;
 int rightVal = 0;
 int leftVal = 0;
 
-float lag = (M_PI / 6.0); // Phase lag between segments
+float lag = (M_PI / 7.0); // Phase lag between segments
 float totalPeriod = 8.0; // Oscillation frequency of segments.
 float minAmplitude = 20; // Amplitude of the serpentine motion of the snake
 float maxAmplitude = 60;
-int startPause = 5000;  // Delay time to position robot
 
 float minSinePower = 1.0;
 float maxSinePower = 2.0;
@@ -33,10 +32,11 @@ const float forwardAngle = 93.0; // Center servo angle for forward or reverse mo
 float centerAngle = forwardAngle; // Center angle set point
 float currentCenterAngle = forwardAngle; // Current value of the center angle
 float turnRampRate = 3.0;
-int rightOffset = 7; // Right turn offset
-int leftOffset = -7; // Left turn offset
+int rightOffset = 5; // Right turn offset
+int leftOffset = -5; // Left turn offset
 bool reverseDirection = false; // Boolean flag to store whether or not the robot is moving in a reverse direction
-float waveValue = 0.0; // Current base value for the wave generator (sine) function
+float waveValue = 0; // Current base value for the wave generator (sine) function
+float offset = lag * 2.5;
 bool runningWave = false,
      runningWavePrevious = runningWave;
 
@@ -53,8 +53,10 @@ float compressExpandMovementPortion = 0.4,
 
 // float compressionValue = 0.0;
 
-const float ANCHOR_TURN_UP_ANGLE = forwardAngle - 30.0,
-            ANCHOR_TURN_DOWN_ANGLE = forwardAngle + 30.0;
+const float FRONT_ANCHOR_TURN_DOWN_ANGLE = forwardAngle + 5.0,
+            FRONT_ANCHOR_TURN_UP_ANGLE = forwardAngle - 25.0,
+            REAR_ANCHOR_TURN_UP_ANGLE = forwardAngle + 30.0,
+            REAR_ANCHOR_TURN_DOWN_ANGLE = forwardAngle - 20.0;
 
 // float currentAnchorAngle = ANCHOR_TURN_UP_ANGLE;
 // float anchorSetPointAngle = ANCHOR_TURN_UP_ANGLE;
@@ -124,7 +126,8 @@ struct ConcertinaMovementInfo
 {
   ConcertinaMovementStage movementStage;
   float compressionValue;
-  float anchorValue;
+  float frontAnchorValue;
+  float rearAnchorValue;
 };
 
 ConcertinaMovementInfo getConcertinaSetPoints(float cycleTime, float movementPeriod, float compressExpandPortion, float anchorReleasePortion)
@@ -142,7 +145,8 @@ ConcertinaMovementInfo getConcertinaSetPoints(float cycleTime, float movementPer
     stageTime = cycleTime;
 
     resultInfo.compressionValue = linearInterpolate(0.0, 1.0, (stageTime / (compressExpandPortion * movementPeriod)));
-    resultInfo.anchorValue = ANCHOR_TURN_DOWN_ANGLE;
+    resultInfo.frontAnchorValue = FRONT_ANCHOR_TURN_DOWN_ANGLE;
+    resultInfo.rearAnchorValue = REAR_ANCHOR_TURN_UP_ANGLE;
   }
   else if(cycleTime < firstCompressExpandThreshold)
   {
@@ -150,7 +154,8 @@ ConcertinaMovementInfo getConcertinaSetPoints(float cycleTime, float movementPer
     stageTime = cycleTime - firstAnchorThreshold;
 
     resultInfo.compressionValue = 1.0;
-    resultInfo.anchorValue = linearInterpolate(ANCHOR_TURN_DOWN_ANGLE, ANCHOR_TURN_UP_ANGLE, (stageTime / (anchorReleasePortion * movementPeriod)));// ANCHOR_TURN_DOWN_ANGLE + ((ANCHOR_TURN_UP_ANGLE - ANCHOR_TURN_DOWN_ANGLE) * (stageTime / (anchorReleasePortion * movementPeriod)));
+    resultInfo.frontAnchorValue = linearInterpolate(FRONT_ANCHOR_TURN_DOWN_ANGLE, FRONT_ANCHOR_TURN_UP_ANGLE, (stageTime / (anchorReleasePortion * movementPeriod)));
+    resultInfo.rearAnchorValue = linearInterpolate(REAR_ANCHOR_TURN_UP_ANGLE, REAR_ANCHOR_TURN_DOWN_ANGLE, (stageTime / (anchorReleasePortion * movementPeriod)));// ANCHOR_TURN_DOWN_ANGLE + ((ANCHOR_TURN_UP_ANGLE - ANCHOR_TURN_DOWN_ANGLE) * (stageTime / (anchorReleasePortion * movementPeriod)));
   }
   else if(cycleTime < secondAnchorThreshold)
   {
@@ -158,7 +163,8 @@ ConcertinaMovementInfo getConcertinaSetPoints(float cycleTime, float movementPer
     stageTime = cycleTime - firstCompressExpandThreshold;
 
     resultInfo.compressionValue = linearInterpolate(1.0, 0.0, (stageTime / (compressExpandPortion * movementPeriod))); // 1.0 - (stageTime / (compressExpandPortion * movementPeriod));
-    resultInfo.anchorValue = ANCHOR_TURN_UP_ANGLE;
+    resultInfo.frontAnchorValue = FRONT_ANCHOR_TURN_UP_ANGLE;
+    resultInfo.rearAnchorValue = REAR_ANCHOR_TURN_DOWN_ANGLE;
   }
   else
   {
@@ -166,7 +172,8 @@ ConcertinaMovementInfo getConcertinaSetPoints(float cycleTime, float movementPer
     stageTime = cycleTime - secondAnchorThreshold;
 
     resultInfo.compressionValue = 0.0;
-    resultInfo.anchorValue = linearInterpolate(ANCHOR_TURN_UP_ANGLE, ANCHOR_TURN_DOWN_ANGLE, (stageTime / (anchorReleasePortion * movementPeriod))); // ANCHOR_TURN_UP_ANGLE + ((ANCHOR_TURN_DOWN_ANGLE - ANCHOR_TURN_UP_ANGLE) * (stageTime / (anchorReleasePortion * movementPeriod)));
+    resultInfo.frontAnchorValue = linearInterpolate(FRONT_ANCHOR_TURN_UP_ANGLE, FRONT_ANCHOR_TURN_DOWN_ANGLE, (stageTime / (anchorReleasePortion * movementPeriod)));
+    resultInfo.rearAnchorValue = linearInterpolate(REAR_ANCHOR_TURN_DOWN_ANGLE, REAR_ANCHOR_TURN_UP_ANGLE, (stageTime / (anchorReleasePortion * movementPeriod))); // ANCHOR_TURN_UP_ANGLE + ((ANCHOR_TURN_DOWN_ANGLE - ANCHOR_TURN_UP_ANGLE) * (stageTime / (anchorReleasePortion * movementPeriod)));
   }
 
   return resultInfo;
@@ -259,18 +266,22 @@ void setup()
   { 
     portNumbers[i] = 13 - i;
 
-    if(i < (NUM_SERVOS - 1))
+    if(i == 0)
+    {
+      initialValues[i] = movementInfo.frontAnchorValue;
+    }
+    else if(i < (NUM_SERVOS - 1))
     {
       // robotServos[i].write(forwardAngle + minAmplitude*sin(i * lag));
-      float sineValue = sin(i * lag),
-              currentAmplitude = minAmplitude + (movementInfo.compressionValue * (maxAmplitude - minAmplitude)),
-              currentSinePower = minSinePower + (movementInfo.compressionValue * (maxSinePower - minSinePower));
+      float sineValue = sin(offset + (i - 1) * lag),
+              currentAmplitude = linearInterpolate(minAmplitude, maxAmplitude, movementInfo.compressionValue),
+              currentSinePower = linearInterpolate(minSinePower, maxSinePower, movementInfo.compressionValue);
         // s1.write(currentAngle + amplitude*cos(frequency*counter*3.14159/180+5*lag));
         initialValues[i] = currentCenterAngle + (currentAmplitude * sign(sineValue) * pow(abs(sineValue), currentSinePower));
     }
     else if(i == NUM_SERVOS - 1)
     {
-      initialValues[i] = movementInfo.anchorValue;
+      initialValues[i] = movementInfo.rearAnchorValue;
     }
 //    else if(i == NUM_SERVOS - 2)
 //    {
@@ -421,9 +432,9 @@ void loop()
       Serial.print(currentCenterAngle);
       Serial.print(" | ");
       // Loop to update robot servos
-      for(int i = 0; i < (NUM_SERVOS - 1); i++)
+      for(int i = 1; i < (NUM_SERVOS - 1); i++)
       {
-        float sineValue = sin(i * lag),
+        float sineValue = sin(offset + (i - 1) * lag),
               currentAmplitude = linearInterpolate(minAmplitude, maxAmplitude, movementInfo.compressionValue), // minAmplitude + (movementInfo.compressionValue * (maxAmplitude - minAmplitude)),
               currentSinePower = linearInterpolate(minSinePower, maxSinePower, movementInfo.compressionValue); // + (movementInfo.compressionValue * (maxSinePower - minSinePower));
         // s1.write(currentAngle + amplitude*cos(frequency*counter*3.14159/180+5*lag));
@@ -443,9 +454,14 @@ void loop()
       // currentAnchorAngle = coerceToRange(anchorSetPointAngle - maxAnchorAngleChange, anchorSetPointAngle + maxAnchorAngleChange, currentAnchorAngle);
 
       // robotServos[NUM_SERVOS - 1].write(currentAnchorAngle);
-      Serial.print("Anchor value: ");
-      Serial.println(movementInfo.anchorValue);
-      robotServos[NUM_SERVOS - 1].write(movementInfo.anchorValue);
+
+      Serial.print("Front anchor value: ");
+      Serial.println(movementInfo.frontAnchorValue);
+      robotServos[0].write(movementInfo.frontAnchorValue);
+      
+      Serial.print("Rear anchor value: ");
+      Serial.println(movementInfo.rearAnchorValue);
+      robotServos[NUM_SERVOS - 1].write(movementInfo.rearAnchorValue);
     }
 
 //    if(runningTurn || runningWave)
