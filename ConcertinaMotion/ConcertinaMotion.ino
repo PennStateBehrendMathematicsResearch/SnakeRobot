@@ -53,7 +53,7 @@ float compressExpandMovementPortion = 0.4,
 
 // float compressionValue = 0.0;
 
-const float FRONT_ANCHOR_TURN_DOWN_ANGLE = forwardAngle + 5.0,
+const float FRONT_ANCHOR_TURN_DOWN_ANGLE = forwardAngle + 10.0,
             FRONT_ANCHOR_TURN_UP_ANGLE = forwardAngle - 25.0,
             REAR_ANCHOR_TURN_UP_ANGLE = forwardAngle + 30.0,
             REAR_ANCHOR_TURN_DOWN_ANGLE = forwardAngle - 20.0;
