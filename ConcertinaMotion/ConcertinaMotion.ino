@@ -20,7 +20,7 @@ int reverseVal = 0;
 int rightVal = 0;
 int leftVal = 0;
 
-float lag = (M_PI / 7.0); // Phase lag between segments
+float lag = (M_PI / 4.0); // Phase lag between segments
 float totalPeriod = 8.0; // Oscillation frequency of segments.
 float minAmplitude = 20; // Amplitude of the serpentine motion of the snake
 float maxAmplitude = 60;
@@ -32,11 +32,11 @@ const float forwardAngle = 93.0; // Center servo angle for forward or reverse mo
 float centerAngle = forwardAngle; // Center angle set point
 float currentCenterAngle = forwardAngle; // Current value of the center angle
 float turnRampRate = 3.0;
-int rightOffset = 5; // Right turn offset
-int leftOffset = -5; // Left turn offset
+int rightOffset = 7; // Right turn offset
+int leftOffset = -7; // Left turn offset
 bool reverseDirection = false; // Boolean flag to store whether or not the robot is moving in a reverse direction
 float waveValue = 0; // Current base value for the wave generator (sine) function
-float offset = lag * 2.5;
+float offset = -2.2779505;
 bool runningWave = false,
      runningWavePrevious = runningWave;
 
@@ -57,6 +57,10 @@ const float FRONT_ANCHOR_TURN_DOWN_ANGLE = forwardAngle + 10.0,
             FRONT_ANCHOR_TURN_UP_ANGLE = forwardAngle - 25.0,
             REAR_ANCHOR_TURN_UP_ANGLE = forwardAngle + 30.0,
             REAR_ANCHOR_TURN_DOWN_ANGLE = forwardAngle - 20.0;
+
+const float HEAD_LENGTH = 15.0,
+            LINK_LENGTH = 7.0,
+            TAIL_LENGTH = 11.5;
 
 // float currentAnchorAngle = ANCHOR_TURN_UP_ANGLE;
 // float anchorSetPointAngle = ANCHOR_TURN_UP_ANGLE;
@@ -130,6 +134,12 @@ struct ConcertinaMovementInfo
   float rearAnchorValue;
 };
 
+/* struct OffsetCalibrationParameters
+{
+  static float compressionValue,
+               centerAngle;
+}; */
+
 ConcertinaMovementInfo getConcertinaSetPoints(float cycleTime, float movementPeriod, float compressExpandPortion, float anchorReleasePortion)
 {
   ConcertinaMovementInfo resultInfo;
@@ -177,6 +187,124 @@ ConcertinaMovementInfo getConcertinaSetPoints(float cycleTime, float movementPer
   }
 
   return resultInfo;
+}
+
+class OffsetEvaluator : public SingleVariableFunction
+{
+private:
+  float compressionValue,
+        centerAngle;
+public:
+
+  OffsetEvaluator(float compressionValue, float centerAngle):
+    compressionValue(compressionValue),
+    centerAngle(centerAngle)
+    {
+      
+    }
+
+  float evaluate(float value) const
+  {
+    float currentXPosition = HEAD_LENGTH + LINK_LENGTH,
+          sumXPositions = HEAD_LENGTH + (HEAD_LENGTH + LINK_LENGTH),
+          sumYPositions = 0.0,
+          currentYPosition = 0.0,
+          angleFromStart = 0.0,
+          thisAngle;
+
+    /* Serial.print("Start X: ");
+    Serial.println(currentXPosition);
+
+    Serial.print("Start Y: ");
+    Serial.println(currentYPosition); */
+    
+    for(unsigned short i = 0; i < (NUM_SERVOS - 2); i++)
+    {
+      float sineValue = sin(value + i * lag),
+                currentAmplitude = linearInterpolate(minAmplitude, maxAmplitude, this->compressionValue),
+                currentSinePower = linearInterpolate(minSinePower, maxSinePower, this->compressionValue);
+          // s1.write(currentAngle + amplitude*cos(frequency*counter*3.14159/180+5*lag));
+      
+      thisAngle = M_PI * (this->centerAngle + (currentAmplitude * sign(sineValue) * pow(abs(sineValue), currentSinePower))) / 180.0;
+      angleFromStart += (thisAngle - (M_PI * forwardAngle / 180.0));
+
+      /* Serial.print("Sine value: ");
+      Serial.println(sineValue);
+      
+      Serial.print("Current servo angle: ");
+      Serial.println(thisAngle);
+
+      Serial.print("Angle from start: ");
+      Serial.println(angleFromStart); */
+  
+      currentXPosition += LINK_LENGTH * cos(angleFromStart);
+      currentYPosition += LINK_LENGTH * sin(angleFromStart);
+
+      /* Serial.print("X");
+      Serial.print(i);
+      Serial.print(": ");
+      Serial.println(currentXPosition);
+  
+      Serial.print("Y");
+      Serial.print(i);
+      Serial.print(": ");
+      Serial.println(currentYPosition); */
+  
+      sumXPositions += currentXPosition;
+      sumYPositions += currentYPosition;
+    }
+  
+    currentXPosition += TAIL_LENGTH * cos(angleFromStart);
+    currentYPosition += TAIL_LENGTH * sin(angleFromStart);
+
+    /* Serial.print("End X: ");
+    Serial.println(currentXPosition);
+
+    Serial.print("End Y: ");
+    Serial.println(currentYPosition); */
+  
+    sumXPositions += currentXPosition;
+    sumYPositions += currentYPosition;
+
+    /* Serial.print("Sum X: ");
+    Serial.println(sumXPositions);
+
+    Serial.print("Sum Y: ");
+    Serial.println(sumYPositions); */
+  
+    float endSlope = currentYPosition / currentXPosition,
+          averageX = sumXPositions / (NUM_SERVOS + 2),
+          averageY = sumYPositions / (NUM_SERVOS + 2);
+
+    /* Serial.print("Average X: ");
+    Serial.println(averageX);
+
+    Serial.print("Average Y: ");
+    Serial.println(averageY); */
+  
+    float errorValue = averageY - (endSlope * averageX);
+
+    /* Serial.print("Error value: ");
+    Serial.println(errorValue); */
+  
+    return errorValue;
+  }
+};
+
+float getCalibratedOffset(float calCompressionValue, float calCenterAngle)
+{
+  float calibrationResult = 0.0;
+
+  OffsetEvaluator evaluator(calCompressionValue, calCenterAngle);
+
+  BisectionResult result = findBisectionSolution(&evaluator, 0.001, 0.0, M_PI);
+
+  if(result.foundSolution)
+  {
+    calibrationResult = result.value;
+  }
+
+  return calibrationResult;
 }
 
 //void robotServoSetup(Servo* servoArray, int* portNumbers, float* initialValues, int arraySize, float setupStartAngle, unsigned long setupPauseLength, float rampRate)
@@ -256,6 +384,11 @@ void setup()
 
   /* centerAngle = forwardAngle;
   currentCenterAngle = forwardAngle; */
+  offset = getCalibratedOffset(0.5, forwardAngle);
+  Serial.print("Offset: ");
+  Serial.println(offset);
+  OffsetEvaluator evaluator(0.5, forwardAngle);
+  evaluator.evaluate(M_PI / 2.0);
 
   ConcertinaMovementInfo movementInfo = getConcertinaSetPoints(waveValue, totalPeriod, compressExpandMovementPortion, anchorReleaseMovementPortion);
 

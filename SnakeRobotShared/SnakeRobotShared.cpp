@@ -1,5 +1,4 @@
-#include <Arduino.h>
-#include <Servo.h>
+#include "SnakeRobotShared.h"
 
 // This method returns the result of constraining value to the range
 // between lowerBound and upperBound by returning lowerBound if value
@@ -63,3 +62,46 @@ void robotServoSetup(Servo* servoArray, int* portNumbers, float* initialValues, 
     }
   }
 }
+
+BisectionResult findBisectionSolution(SingleVariableFunction* bisectionFunction, float tolerance, float lowerBound, float upperBound)
+{
+  float midPoint = (lowerBound + upperBound) / 2;
+  float midPointValue = bisectionFunction->evaluate(midPoint);
+
+  BisectionResult result;
+  result.foundSolution = true;
+
+  while(abs(midPointValue) > tolerance && result.foundSolution)
+  {
+    float upperBoundValue = bisectionFunction->evaluate(upperBound);
+
+    if(upperBoundValue * midPointValue < 0)
+    {
+      lowerBound = midPoint;
+    }
+    else
+    {
+      float lowerBoundValue = bisectionFunction->evaluate(lowerBound);
+
+      if(lowerBoundValue * midPointValue < 0)
+      {
+        upperBound = midPoint;
+      }
+      else
+      {
+        result.foundSolution = false;
+      }
+    }
+
+    midPoint = (lowerBound + upperBound) / 2;
+    midPointValue = bisectionFunction->evaluate(midPoint);
+  }
+
+  if(result.foundSolution)
+  {
+    result.value = midPoint;
+  }
+
+  return result;
+}
+
