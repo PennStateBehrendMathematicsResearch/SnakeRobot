@@ -1,7 +1,7 @@
 @ECHO OFF
 SETLOCAL ENABLEDELAYEDEXPANSION
 
-SET copyDirName=SnakeRobotShared
+SET copyDirName=SnakeRobotLibrary
 
 
 SET copyDir="%CD%\%copyDirName%"
@@ -30,7 +30,19 @@ FOR /F delims^=^"^ tokens^=2 %%G IN (%tempFile%) DO (
 	SET arduinoUninstallerPath=%%G
 )
 
-CD /D "%arduinoUninstallerPath%\.."
+IF NOT DEFINED arduinoUninstallerPath (
+	FOR /F "tokens=*" %%A IN (predefined_install_paths.txt) DO (
+		IF EXIST "%%A" (
+			SET installPath=%%A
+		)
+	)
+
+	ECHO Install path: "!installPath!"
+
+	CD /D "!installPath!"	
+) ELSE (
+	CD /D "!arduinoUninstallerPath!\.."
+)
 CALL :errorCheck Navigating to Arduino install directory failed.
 
 ECHO Finding Arduino library path...
@@ -46,7 +58,7 @@ SET destinationDir="%lastLine%\libraries\%copyDirName%"
 
 ECHO Removing existing library...
 
-DEL %destinationDir%
+DEL /Q %destinationDir%
 CALL :errorCheck Removing existing library files failed.
 
 ECHO Copying library...
