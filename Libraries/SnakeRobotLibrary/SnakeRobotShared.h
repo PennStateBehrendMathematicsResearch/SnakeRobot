@@ -18,6 +18,6 @@ struct BisectionResult
 
 float coerceToRange(float lowerBound, float upperBound, float value);
 float linearInterpolate(float startValue, float endValue, float interpolateValue);
-void robotServoSetup(Servo* servoArray, int* portNumbers, float* initialValues, int arraySize, float setupStartAngle, unsigned long setupPauseLength, float rampRate);
+void robotServoSetup(Servo* servoArray, const int* portNumbers, const float* initialValues, const float* setupStartAngles, int arraySize, unsigned long setupPauseLength, float rampRate);
 BisectionResult findBisectionSolution(SingleVariableFunction* bisectionFunction, float tolerance, float lowerBound, float upperBound);
 #endif

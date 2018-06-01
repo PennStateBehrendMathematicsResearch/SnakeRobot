@@ -10,6 +10,9 @@ of a snake robot with 12 servos
 
 const unsigned short NUM_SERVOS = 12;
 Servo robotServos[NUM_SERVOS];
+
+// Servo forward angles (use to correct inaccuracies in robot assembly)
+const float forwardAngles[NUM_SERVOS] = {92.0, 92.0, 92.0, 92.0, 92.0, 92.0, 92.0, 92.0, 92.0, 92.0, 92.0, 91.0};
   
 // Define variables
 int forwardPin = 14;  // Remote control movement pins
@@ -30,7 +33,6 @@ float maxAmplitude = 60;
 float minSinePower = 1.0;
 float maxSinePower = 2.0;
 
-const float forwardAngle = 93.0; // Center servo angle for forward or reverse motion (without turning)
 float turnRampRate = 3.0;
 int rightOffset = 7; // Right turn offset
 int leftOffset = -7; // Left turn offset
@@ -38,7 +40,7 @@ bool reverseDirection = false; // Boolean flag to store whether or not the robot
 bool runningWave = false,
      runningWavePrevious = runningWave;
 
-ConcertinaMotionGenerator motionGenerator(forwardAngle, forwardAngle);
+ConcertinaMotionGenerator motionGenerator(NUM_SERVOS, forwardAngles, 0.0);
 
 //bool runningTurn = false;
 //enum RobotTurnDirection {LEFT_TURN, RIGHT_TURN};
@@ -50,10 +52,10 @@ float compressExpandMovementPortion = 0.4,
 
 // float compressionValue = 0.0;
 
-const float FRONT_ANCHOR_TURN_DOWN_ANGLE = forwardAngle + 20.0,
-            FRONT_ANCHOR_TURN_UP_ANGLE = forwardAngle - 25.0,
-            REAR_ANCHOR_TURN_UP_ANGLE = forwardAngle + 30.0,
-            REAR_ANCHOR_TURN_DOWN_ANGLE = forwardAngle - 25.0;
+const float FRONT_ANCHOR_TURN_DOWN_ANGLE = 20.0,
+            FRONT_ANCHOR_TURN_UP_ANGLE = -25.0,
+            REAR_ANCHOR_TURN_UP_ANGLE = 30.0,
+            REAR_ANCHOR_TURN_DOWN_ANGLE = -25.0;
 
 const float HEAD_LENGTH = 13.5,
             LINK_LENGTH = 7.0,
@@ -198,7 +200,7 @@ void setup()
   motionGenerator.setPhaseLag(lag);
   motionGenerator.setRampRate(turnRampRate);
 
-  motionGenerator.calibrateOffset(NUM_SERVOS, 0.5, HEAD_LENGTH, LINK_LENGTH, TAIL_LENGTH);
+  motionGenerator.calibrateOffset(0.5, HEAD_LENGTH, LINK_LENGTH, TAIL_LENGTH);
   /* centerAngle = forwardAngle;
   currentCenterAngle = forwardAngle;
   offset = getCalibratedOffset(0.5, forwardAngle);
@@ -246,9 +248,9 @@ void setup()
     // Serial.print("Started servo connected to " + String(13 - i) + " with " + String(centerAngle+amplitude*cos(i * lag)) + ".\n"); 
   }
 */
-  motionGenerator.getServos(servoValueBuffer, NUM_SERVOS, 0.0, false);
+  motionGenerator.getServos(servoValueBuffer, 0.0, false);
 
-  robotServoSetup(robotServos, portNumbers, servoValueBuffer, NUM_SERVOS, forwardAngle, 330, 45.0);
+  robotServoSetup(robotServos, portNumbers, servoValueBuffer, forwardAngles, NUM_SERVOS, 330, 45.0);
 
   // Pause to position robot
   // delay(startPause);
@@ -320,7 +322,7 @@ void loop()
        lastTimeStamp = currentTimeStamp;
 
       motionGenerator.setRampedTurnOffset(turnOffset);
-      motionGenerator.getServos(servoValueBuffer, NUM_SERVOS, elapsedTime, reverseDirection);
+      motionGenerator.getServos(servoValueBuffer, elapsedTime, reverseDirection);
 
       for(unsigned short i = 0; i < NUM_SERVOS; i++)
       {

@@ -5,8 +5,15 @@ of a snake robot with 12 servos
 
 #include <Servo.h>
 
+#include <SnakeRobotShared.h>
+
+#define TWO_BUTTON_REVERSE_TURN_LAYOUT
+
 const unsigned short NUM_SERVOS = 12;
 Servo robotServos[NUM_SERVOS];
+
+// Servo forward angles (use to correct inaccuracies in robot assembly)
+float forwardAngles[NUM_SERVOS] = {92.0, 92.0, 92.0, 92.0, 92.0, 92.0, 92.0, 92.0, 92.0, 92.0, 92.0, 91.0};
   
 // Define variables
 int forwardPin = 14;  // Remote control movement pins
@@ -26,34 +33,15 @@ int rightOffset = 7; // Right turn offset
 int leftOffset = -7; // Left turn offset
 int startPause = 5000;  // Delay time to position robot
 
-float forwardAngle = 93.0; // Center servo angle for forward or reverse motion (without turning)
-float centerAngle = forwardAngle; // Center angle set point
-float currentCenterAngle = forwardAngle; // Current value of the center angle
+float turnSetpoint = 0.0; // Center angle set point
+float currentTurnAngle = 0.0; // Current value of the center angle
 bool reverseDirection = false; // Boolean flag to store whether or not the robot is moving in a reverse direction
 float waveValue = 0.0; // Current base value for the wave generator (sine) function
 bool runningWave = false,
      runningWavePrevious = runningWave;
-float turnRampRate = 3; // Maximum rate at which turn offsets are ramped (degrees per second)
+float turnRampRate = 3.0; // Maximum rate at which turn offsets are ramped (degrees per second)
 unsigned long currentTimeStamp,
               lastTimeStamp;
-
-// This method returns the result of constraining value to the range
-// between lowerBound and upperBound by returning lowerBound if value
-// is less than lowerBound, upperBound if value is greater than
-// upperBound, and value otherwise.
-float coerceToRange(float lowerBound, float upperBound, float value)
-{
-  if(value > upperBound)
-  {
-    value = upperBound;
-  }
-  else if(value < lowerBound)
-  {
-    value = lowerBound;
-  }
-
-  return value;
-}
 
 void setup() 
 { 
@@ -74,18 +62,20 @@ void setup()
   // Attach segment servos to pins and initialize them to their
   // starting positions
 
-  centerAngle = forwardAngle;
-  currentCenterAngle = forwardAngle;
+  int portNumbers[NUM_SERVOS];
+  float initialValues[NUM_SERVOS];
   
   for(int i = 0; i < NUM_SERVOS; i++)
   {
-    robotServos[i].attach(13 - i);
-    robotServos[i].write(centerAngle+amplitude*sin(i * lag));
+    portNumbers[i] = 13 - i;
+    initialValues[i] = forwardAngles[i] + currentTurnAngle + amplitude * sin(i * lag);
     // Serial.print("Started servo connected to " + String(13 - i) + " with " + String(centerAngle+amplitude*cos(i * lag)) + ".\n"); 
   }
 
   // Pause to position robot
   delay(startPause);
+  
+  robotServoSetup(robotServos, portNumbers, initialValues, forwardAngles, NUM_SERVOS, 330, 45.0);
 } 
   
   
@@ -97,24 +87,60 @@ void loop()
     rightVal = digitalRead(rightPin);
     leftVal = digitalRead(leftPin);
 
+#ifdef TWO_BUTTON_REVERSE_TURN_LAYOUT
+    if (reverseVal == HIGH)
+    {
+      runningWave = true;
+      reverseDirection = true;
+    }
+    else
+    {
+      reverseDirection = false;
+    }
+
+    // Right turn
+    if (rightVal == HIGH)
+    {
+      runningWave = true;
+      turnSetpoint = rightOffset;
+    }
+    // Left turn
+    else if (leftVal == HIGH)
+    {
+      runningWave = true;
+      turnSetpoint = leftOffset;
+    }
+    // Straight movement
+    else if (forwardVal == HIGH || reverseVal == HIGH)
+    {
+      runningWave = true;
+      turnSetpoint = 0.0;
+    }
+    else
+    {
+      runningWave = false;
+    }
+#else
     // Right turn
     if (rightVal == HIGH){
       runningWave = true;
-      centerAngle = forwardAngle + rightOffset;
+      turnSetpoint = rightOffset;
+      
       // waveOffsetMultiplier = 1.0;
       // Serial.println("Turning right...");
     }
     // Left turn
     else if (leftVal == HIGH){
       runningWave = true;
-      centerAngle = forwardAngle + leftOffset;
+      turnSetpoint = leftOffset;
+      
       // Serial.println("Turning left...");
       // waveOffsetMultiplier = 1.0;
     }
     // Straight movement
     else
     {
-      centerAngle = forwardAngle;
+      turnSetpoint = 0.0;
     }
     
     // Forward motion
@@ -132,6 +158,7 @@ void loop()
     {
       runningWave = false;
     }
+#endif
 
     // If the robot has just started running
     if(runningWave && !runningWavePrevious)
@@ -157,14 +184,14 @@ void loop()
       float maxAngleChange = turnRampRate * elapsedTime;
 
       // Calculate the new center angle
-      currentCenterAngle = coerceToRange(currentCenterAngle - maxAngleChange, currentCenterAngle + maxAngleChange, centerAngle);
+      currentTurnAngle = coerceToRange(currentTurnAngle - maxAngleChange, currentTurnAngle + maxAngleChange, turnSetpoint);
       // Serial.println("Current center angle: " + String(currentCenterAngle));
 
       // Loop to update robot servos
       for(int i = 0; i < NUM_SERVOS; i++)
       {
         // s1.write(currentAngle + amplitude*cos(frequency*counter*3.14159/180+5*lag));
-        robotServos[i].write(currentCenterAngle + amplitude*sin(waveValue + (i * lag)));
+        robotServos[i].write(forwardAngles[i] + currentTurnAngle + amplitude*sin(waveValue + (i * lag)));
       }
     }
 }

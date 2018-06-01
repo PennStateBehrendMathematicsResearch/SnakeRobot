@@ -16,14 +16,14 @@ float sign(float value)
   return returnValue;
 }
 
-OffsetEvaluator::OffsetEvaluator(unsigned short numServos, float headLength, float linkLength, float tailLength, float forwardAngle, float centerAngle, float phaseLag, float sinePower,
+OffsetEvaluator::OffsetEvaluator(unsigned short numServos, float headLength, float linkLength, float tailLength, const float* forwardAngles, float turnOffset, float phaseLag, float sinePower,
                   float amplitude):
   numServos(numServos),
   headLength(headLength),
   linkLength(linkLength),
   tailLength(tailLength),
-  forwardAngle(forwardAngle),
-  centerAngle(centerAngle),
+  forwardAngles(forwardAngles),
+  turnOffset(turnOffset),
   phaseLag(phaseLag),
   sinePower(sinePower),
   amplitude(amplitude)
@@ -51,8 +51,8 @@ float OffsetEvaluator::evaluate(float value) const
       float sineValue = sin(value + i * this->phaseLag);
           // s1.write(currentAngle + amplitude*cos(frequency*counter*3.14159/180+5*lag));
       
-      thisAngle = M_PI * (this->centerAngle + (this->amplitude * sign(sineValue) * pow(abs(sineValue), this->sinePower))) / 180.0;
-      angleFromStart += (thisAngle - (M_PI * this->forwardAngle / 180.0));
+      thisAngle = M_PI * (this->forwardAngles[i + 1] + this->turnOffset + (this->amplitude * sign(sineValue) * pow(abs(sineValue), this->sinePower))) / 180.0;
+      angleFromStart += (thisAngle - (M_PI * this->forwardAngles[i + 1] / 180.0));
 
       /* Serial.print("Sine value: ");
       Serial.println(sineValue);
@@ -131,8 +131,8 @@ ConcertinaMovementInfo ConcertinaMotionGenerator::getConcertinaSetPoints()
     stageTime = this->cycleTime;
 
     resultInfo.compressionValue = linearInterpolate(0.0, 1.0, (stageTime / (this->compressExpandPortion * this->movementPeriod)));
-    resultInfo.frontAnchorValue = this->headLowerAngle;
-    resultInfo.rearAnchorValue = this->tailUpperAngle;
+    resultInfo.frontAnchorValue = this->forwardAngles[0] + this->headLowerAngle;
+    resultInfo.rearAnchorValue = this->forwardAngles[this->numServos - 1] + this->tailUpperAngle;
   }
   else if(this->cycleTime < firstCompressExpandThreshold)
   {
@@ -140,8 +140,8 @@ ConcertinaMovementInfo ConcertinaMotionGenerator::getConcertinaSetPoints()
     stageTime = this->cycleTime - firstAnchorThreshold;
 
     resultInfo.compressionValue = 1.0;
-    resultInfo.frontAnchorValue = linearInterpolate(this->headLowerAngle, this->headUpperAngle, (stageTime / (this->anchorReleasePortion * this->movementPeriod)));
-    resultInfo.rearAnchorValue = linearInterpolate(this->tailUpperAngle, this->tailLowerAngle, (stageTime / (this->anchorReleasePortion * this->movementPeriod)));// ANCHOR_TURN_DOWN_ANGLE + ((ANCHOR_TURN_UP_ANGLE - ANCHOR_TURN_DOWN_ANGLE) * (stageTime / (anchorReleasePortion * movementPeriod)));
+    resultInfo.frontAnchorValue = this->forwardAngles[0] + linearInterpolate(this->headLowerAngle, this->headUpperAngle, (stageTime / (this->anchorReleasePortion * this->movementPeriod)));
+    resultInfo.rearAnchorValue = this->forwardAngles[this->numServos - 1] + linearInterpolate(this->tailUpperAngle, this->tailLowerAngle, (stageTime / (this->anchorReleasePortion * this->movementPeriod)));// ANCHOR_TURN_DOWN_ANGLE + ((ANCHOR_TURN_UP_ANGLE - ANCHOR_TURN_DOWN_ANGLE) * (stageTime / (anchorReleasePortion * movementPeriod)));
   }
   else if(this->cycleTime < secondAnchorThreshold)
   {
@@ -149,8 +149,8 @@ ConcertinaMovementInfo ConcertinaMotionGenerator::getConcertinaSetPoints()
     stageTime = this->cycleTime - firstCompressExpandThreshold;
 
     resultInfo.compressionValue = linearInterpolate(1.0, 0.0, (stageTime / (this->compressExpandPortion * this->movementPeriod))); // 1.0 - (stageTime / (compressExpandPortion * movementPeriod));
-    resultInfo.frontAnchorValue = this->headUpperAngle;
-    resultInfo.rearAnchorValue = this->tailLowerAngle;
+    resultInfo.frontAnchorValue = this->forwardAngles[0] + this->headUpperAngle;
+    resultInfo.rearAnchorValue = this->forwardAngles[this->numServos - 1] + this->tailLowerAngle;
   }
   else
   {
@@ -158,15 +158,16 @@ ConcertinaMovementInfo ConcertinaMotionGenerator::getConcertinaSetPoints()
     stageTime = this->cycleTime - secondAnchorThreshold;
 
     resultInfo.compressionValue = 0.0;
-    resultInfo.frontAnchorValue = linearInterpolate(this->headUpperAngle, this->headLowerAngle, (stageTime / (this->anchorReleasePortion * this->movementPeriod)));
-    resultInfo.rearAnchorValue = linearInterpolate(this->tailLowerAngle, this->tailUpperAngle, (stageTime / (this->anchorReleasePortion * this->movementPeriod))); // ANCHOR_TURN_UP_ANGLE + ((ANCHOR_TURN_DOWN_ANGLE - ANCHOR_TURN_UP_ANGLE) * (stageTime / (anchorReleasePortion * movementPeriod)));
+    resultInfo.frontAnchorValue = this->forwardAngles[0] + linearInterpolate(this->headUpperAngle, this->headLowerAngle, (stageTime / (this->anchorReleasePortion * this->movementPeriod)));
+    resultInfo.rearAnchorValue = this->forwardAngles[this->numServos - 1] + linearInterpolate(this->tailLowerAngle, this->tailUpperAngle, (stageTime / (this->anchorReleasePortion * this->movementPeriod))); // ANCHOR_TURN_UP_ANGLE + ((ANCHOR_TURN_DOWN_ANGLE - ANCHOR_TURN_UP_ANGLE) * (stageTime / (anchorReleasePortion * movementPeriod)));
   }
 
   return resultInfo;
 }
 
-ConcertinaMotionGenerator::ConcertinaMotionGenerator(float forwardAngle, float startTurnAngle):
-  forwardAngle(forwardAngle),
+ConcertinaMotionGenerator::ConcertinaMotionGenerator(unsigned short numServos, const float* forwardAngles, float startTurnAngle):
+  numServos(numServos),
+  forwardAngles(forwardAngles),
   turnSetpoint(startTurnAngle),
   currentTurnAngle(startTurnAngle)
 {
@@ -225,15 +226,15 @@ void ConcertinaMotionGenerator::setRampRate(float rampRate)
 
 void ConcertinaMotionGenerator::setRampedTurnOffset(float turnOffset)
 {
-  this->turnSetpoint = (this->forwardAngle + turnOffset);
+  this->turnSetpoint = turnOffset;
 }
 
-void ConcertinaMotionGenerator::calibrateOffset(unsigned short numServos, float compressionValue, float headLength, float linkLength, float tailLength)
+void ConcertinaMotionGenerator::calibrateOffset(float compressionValue, float headLength, float linkLength, float tailLength)
 {
   float amplitude = linearInterpolate(this->minAmplitude, this->maxAmplitude, compressionValue),
         sinePower = linearInterpolate(this->minPower, this->maxPower, compressionValue);
 
-  OffsetEvaluator evaluator(numServos, headLength, linkLength, tailLength, this->forwardAngle, this->forwardAngle, this->phaseLag, sinePower, amplitude);
+  OffsetEvaluator evaluator(this->numServos, headLength, linkLength, tailLength, this->forwardAngles, 0.0, this->phaseLag, sinePower, amplitude);
 
   BisectionResult result = findBisectionSolution(&evaluator, 0.001, 0.0, M_PI);
 
@@ -249,7 +250,7 @@ void ConcertinaMotionGenerator::calibrateOffset(unsigned short numServos, float 
   }
 }
 
-void ConcertinaMotionGenerator::getServos(float* servoValuesOut, unsigned short numServos, float elapsedTime, bool reverseDirection)
+void ConcertinaMotionGenerator::getServos(float* servoValuesOut, float elapsedTime, bool reverseDirection)
 {
   this->cycleTime += (elapsedTime * (reverseDirection ? -1.0 : 1.0));
   this->cycleTime = fmod(this->cycleTime, this->movementPeriod);
@@ -277,19 +278,19 @@ void ConcertinaMotionGenerator::getServos(float* servoValuesOut, unsigned short 
   Serial.print(this->currentTurnAngle);
   Serial.print(F(" | "));
   // Loop to update robot servos
-  for(int i = 1; i < (numServos - 1); i++)
+  for(int i = 1; i < (this->numServos - 1); i++)
   {
     float sineValue = sin(this->offset + (i - 1) * this->phaseLag),
           currentAmplitude = linearInterpolate(this->minAmplitude, this->maxAmplitude, movementInfo.compressionValue), // minAmplitude + (movementInfo.compressionValue * (maxAmplitude - minAmplitude)),
           currentSinePower = linearInterpolate(this->minPower, this->maxPower, movementInfo.compressionValue); // + (movementInfo.compressionValue * (maxSinePower - minSinePower));
     // s1.write(currentAngle + amplitude*cos(frequency*counter*3.14159/180+5*lag));
-    servoValuesOut[i] = this->currentTurnAngle + (currentAmplitude * sign(sineValue) * pow(abs(sineValue), currentSinePower));
+    servoValuesOut[i] = this->forwardAngles[i] + this->currentTurnAngle + (currentAmplitude * sign(sineValue) * pow(abs(sineValue), currentSinePower));
 
     Serial.print(abs(sineValue));
     Serial.print(F(" ^ "));
     Serial.print(currentSinePower);
     Serial.print(F(" : "));
-    Serial.print(this->currentTurnAngle + (currentAmplitude * sign(sineValue) * pow(abs(sineValue), currentSinePower)));
+    Serial.print(servoValuesOut[i]);
     Serial.print(' ');
   }
 
@@ -306,6 +307,6 @@ void ConcertinaMotionGenerator::getServos(float* servoValuesOut, unsigned short 
   
   Serial.print(F("Rear anchor value: "));
   Serial.println(movementInfo.rearAnchorValue);
-  servoValuesOut[numServos - 1] = movementInfo.rearAnchorValue;
+  servoValuesOut[this->numServos - 1] = movementInfo.rearAnchorValue;
 }
 
