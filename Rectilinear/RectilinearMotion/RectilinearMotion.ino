@@ -7,17 +7,29 @@ of a snake robot with 12 servos
 
 #include <SnakeRobotShared.h>
 
+enum RobotTurnDirection {LEFT_TURN, RIGHT_TURN};
+void advanceTurnSetPoints(RobotTurnDirection turnDirection, float& horizontalSetPoint, float& verticalSetPoint);
+
+// This function returns the hardware port number for a given logical servo number (logical servo numbers begin from 0 at the head of the snake and increase down the snake body)
+int getServoPortNumber(int servoNumber)
+{
+  return (13 - servoNumber);
+}
+
+// Total number of robot servos
 const unsigned short NUM_SERVOS = 12;
 Servo robotServos[NUM_SERVOS];
 
 // Servo forward angles (use to correct inaccuracies in robot assembly)
 const float forwardAngles[NUM_SERVOS] = {92.0, 92.0, 92.0, 92.0, 92.0, 92.0, 92.0, 92.0, 92.0, 92.0, 92.0, 91.0};
   
-// Define variables
-int forwardPin = 14;  // Remote control movement pins
-int reversePin = 15;
-int rightPin = 17;
-int leftPin = 16;
+// Define variables:
+
+// Remote control movement pins
+int forwardPin = 17; // DIO pin corresponding to 'A'
+int reversePin = 16; // DIO pin corresponding to 'B'
+int leftPin = 15;    // DIO pin corresponding to 'C'
+int rightPin = 14;   // DIO pin corresponding to 'D'
 
 int forwardVal = 0;  // Remote control variables
 int reverseVal = 0;
@@ -25,36 +37,36 @@ int rightVal = 0;
 int leftVal = 0;
 
 float lag = (M_PI / 3.0); // Phase lag between segments
-float frequency = 0.25; // Oscillation frequency of segments.
-float maxAmplitude = 20.0; // Amplitude of the serpentine motion of the snake
-float currentAmplitude = maxAmplitude;
-float amplitudeSetpoint = maxAmplitude;
-float amplitudeRampRate = 10.0;
+float frequency = 0.25; // Oscillation frequency of segments
+float maxAmplitude = 20.0; // Maximum amplitude of the rectilinear motion of the snake
+float currentAmplitude = maxAmplitude; // Current value of the amplitude of the rectilinear motion of the snake
+float amplitudeSetpoint = maxAmplitude; // Current set point for the amplitude of the rectilinear motion of the snake
+float amplitudeRampRate = 10.0; // Rate of ramping of the amplitude of the rectilinear motion of the snake toward its set point
 int startPause = 5000;  // Delay time to position robot
 
-// const float forwardAngle = 93.0; // Center servo angle for forward or reverse motion (without turning)
-// float centerAngle = forwardAngle; // Center angle set point
-// float currentCenterAngle = forwardAngle; // Current value of the center angle
 bool reverseDirection = false; // Boolean flag to store whether or not the robot is moving in a reverse direction
 float waveValue = 0.0; // Current base value for the wave generator (sine) function
 bool runningWave = false,
      runningWavePrevious = runningWave;
 
 bool runningTurn = false;
-enum RobotTurnDirection {LEFT_TURN, RIGHT_TURN};
+
+// Current turn direction and turn direction during the previous iteration, respectively
 RobotTurnDirection currentTurnDirection = RobotTurnDirection::LEFT_TURN,
                    previousTurnDirection = RobotTurnDirection::LEFT_TURN;
 
+// Angular offsets for the vertical and horizontal head servos
 const float VERTICAL_TURN_UP_ANGLE = -30.0,
             VERTICAL_TURN_DOWN_ANGLE = 30.0,
             HORIZONTAL_TURN_LEFT_ANGLE = -60.0,
             HORIZONTAL_TURN_RIGHT_ANGLE = 60.0;
 
 // 260.0 max
-float horizontalTurnRampRate = 20.0,
-      verticalTurnRampRate = 20.0,
-      horizontalResetRampRate = 100.0,
-      verticalResetRampRate = 100.0; // Maximum rate at which turn offsets are ramped (degrees per second)
+// Maximum rate at which turn offsets are ramped (degrees per second)
+float horizontalTurnRampRate = 20.0, // Ramp rate of the horizontal head servo during turns
+      verticalTurnRampRate = 20.0, // Ramp rate of the vertical head servo during turns
+      horizontalPositioningRampRate = 100.0, // Ramp rate of the horizontal head servo when moving between positions (e.g. moving down and to one side in preparation for a turn)
+      verticalPositioningRampRate = 100.0; // Ramp rate of the vertical head servo when moving between positions (e.g. moving down and to one side in preparation for a turn)
 float horizontalTurnSetPoint = 0.0,
       horizontalTurnCurrentValue = horizontalTurnSetPoint,
       verticalTurnSetPoint = VERTICAL_TURN_UP_ANGLE,
@@ -63,6 +75,7 @@ float horizontalTurnSetPoint = 0.0,
 unsigned long currentTimeStamp,
               lastTimeStamp;
 
+// This function advances the set points specified by horizontalSetPoint and verticalSetPoint in the turn direction specified by turnDirection.
 void advanceTurnSetPoints(RobotTurnDirection turnDirection, float& horizontalSetPoint, float& verticalSetPoint)
 {
   if(turnDirection == RobotTurnDirection::LEFT_TURN)
@@ -132,7 +145,7 @@ void setup()
   
   for(int i = 0; i < NUM_SERVOS; i++)
   {
-    portNumbers[i] = 13 - i;
+    portNumbers[i] = getServoPortNumber(i);
   }
 
   initialValues[0] = forwardAngles[0] + horizontalTurnCurrentValue;
@@ -200,15 +213,6 @@ void loop()
       }
     }
 
-    // If the robot has just started running
-    /* if(runningWave && !runningWavePrevious)
-    {
-      // Reset the last time stamp to the current millisecond timer value
-      lastTimeStamp = millis();
-    }
-
-    runningWavePrevious = runningWave; */
-
     currentTimeStamp = millis();
     float elapsedTime = (currentTimeStamp - lastTimeStamp) / 1000.0;
     lastTimeStamp = currentTimeStamp;
@@ -263,6 +267,9 @@ void loop()
           }
           
           verticalTurnSetPoint = VERTICAL_TURN_DOWN_ANGLE;
+
+          activeHorizontalRampRate = horizontalPositioningRampRate;
+          activeVerticalRampRate = verticalPositioningRampRate;
         }
   
         previousTurnDirection = currentTurnDirection;
@@ -272,8 +279,8 @@ void loop()
         horizontalTurnSetPoint = 0.0;
         verticalTurnSetPoint = VERTICAL_TURN_UP_ANGLE;
 
-        activeHorizontalRampRate = horizontalResetRampRate;
-        activeVerticalRampRate = verticalResetRampRate;
+        activeHorizontalRampRate = horizontalPositioningRampRate;
+        activeVerticalRampRate = verticalPositioningRampRate;
       }
 
       float maxHorizontalAngleChange = activeHorizontalRampRate * elapsedTime,

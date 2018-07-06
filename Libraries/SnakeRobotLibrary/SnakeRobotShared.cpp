@@ -27,11 +27,12 @@ void robotServoSetup(Servo* servoArray, const int* portNumbers, const float* ini
 {
   for(int i = 0; i < arraySize; i++)
   {
+
     /*
     Serial.print("Started setup for ");
     Serial.print(i);
     Serial.print(": ");
-    Serial.println(setupStartAngle);
+    Serial.println(setupStartAngles[i]);
     */
 
     servoArray[i].attach(portNumbers[i]);

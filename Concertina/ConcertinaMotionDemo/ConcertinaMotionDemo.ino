@@ -14,7 +14,12 @@ Servo robotServos[NUM_SERVOS];
 // Servo forward angles (use to correct inaccuracies in robot assembly)
 const float forwardAngles[NUM_SERVOS] = {92.0, 92.0, 92.0, 92.0, 92.0, 92.0, 92.0, 92.0, 92.0, 92.0, 92.0, 91.0};
 
-int abortPin = 14;
+int getServoPortNumber(int servoNumber)
+{
+  return (13 - servoNumber);
+}
+
+int abortPin = 17;
 
 int abortVal = 0;  // Remote control variables
 bool demoAborted = false;
@@ -80,7 +85,7 @@ void setup()
   
   for(int i = 0; i < (NUM_SERVOS); i++)
   { 
-    portNumbers[i] = 13 - i;
+    portNumbers[i] = getServoPortNumber(i);
   }
   
   motionGenerator.getServos(servoValueBuffer, 0.0, false);

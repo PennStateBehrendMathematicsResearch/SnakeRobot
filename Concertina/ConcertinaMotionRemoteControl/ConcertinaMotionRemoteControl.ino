@@ -15,10 +15,11 @@ Servo robotServos[NUM_SERVOS];
 const float forwardAngles[NUM_SERVOS] = {92.0, 92.0, 92.0, 92.0, 92.0, 92.0, 92.0, 92.0, 92.0, 92.0, 92.0, 91.0};
   
 // Define variables
-int forwardPin = 14;  // Remote control movement pins
-int reversePin = 15;
-int rightPin = 17;
-int leftPin = 16;
+// Remote control movement pins
+int forwardPin = 17; // DIO pin corresponding to 'A'
+int reversePin = 16; // DIO pin corresponding to 'B'
+int leftPin = 15;    // DIO pin corresponding to 'C'
+int rightPin = 14;   // DIO pin corresponding to 'D'
 
 int forwardVal = 0;  // Remote control variables
 int reverseVal = 0;

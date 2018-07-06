@@ -7,26 +7,37 @@ of a snake robot with 12 servos
 
 #include <SnakeRobotShared.h>
 
-#define TWO_BUTTON_REVERSE_TURN_LAYOUT
+// Compiler flag to set a button layout which uses two buttons for reverse turns; if not set, a single-button layout that persists movement direction for turns will be used (see README.md in
+// the Serpentine folder for more information)
+// #define TWO_BUTTON_REVERSE_TURN_LAYOUT
 
+// Total number of robot servos
 const unsigned short NUM_SERVOS = 12;
 Servo robotServos[NUM_SERVOS];
 
 // Servo forward angles (use to correct inaccuracies in robot assembly)
 float forwardAngles[NUM_SERVOS] = {92.0, 92.0, 92.0, 92.0, 92.0, 92.0, 92.0, 92.0, 92.0, 92.0, 92.0, 91.0};
+
+// This function returns the hardware port number for a given logical servo number (logical servo numbers begin from 0 at the head of the snake and increase down the snake body)
+int getServoPortNumber(int servoNumber)
+{
+  return (13 - servoNumber);
+}
   
-// Define variables
-int forwardPin = 14;  // Remote control movement pins
-int reversePin = 15;
-int rightPin = 17;
-int leftPin = 16;
+// Define variables:
+
+// Remote control movement pins
+int forwardPin = 17; // DIO pin corresponding to 'A'
+int reversePin = 16; // DIO pin corresponding to 'B'
+int leftPin = 15;    // DIO pin corresponding to 'C'
+int rightPin = 14;   // DIO pin corresponding to 'D'
 
 int forwardVal = 0;  // Remote control variables
 int reverseVal = 0;
 int rightVal = 0;
 int leftVal = 0;
 
-float lag = .5236; // Phase lag between segments
+float lag = (M_PI / 6.0); // Phase lag between segments
 float frequency = 0.35; // Oscillation frequency of segments.
 int amplitude = 35; // Amplitude of the serpentine motion of the snake
 int rightOffset = 7; // Right turn offset
@@ -59,22 +70,21 @@ void setup()
   digitalWrite(rightPin, LOW);
   digitalWrite(leftPin, LOW);
   
-  // Attach segment servos to pins and initialize them to their
-  // starting positions
-
+  // Determine port numbers and initial values for servos
   int portNumbers[NUM_SERVOS];
   float initialValues[NUM_SERVOS];
   
   for(int i = 0; i < NUM_SERVOS; i++)
   {
-    portNumbers[i] = 13 - i;
+    portNumbers[i] = getServoPortNumber(i);
     initialValues[i] = forwardAngles[i] + currentTurnAngle + amplitude * sin(i * lag);
-    // Serial.print("Started servo connected to " + String(13 - i) + " with " + String(centerAngle+amplitude*cos(i * lag)) + ".\n"); 
+    // Serial.print("Started servo connected to " + String(portNumbers[i]) + " with " + String(initialValues[i]) + ".\n"); 
   }
 
   // Pause to position robot
   delay(startPause);
-  
+
+  // Attach and setup robot servos
   robotServoSetup(robotServos, portNumbers, initialValues, forwardAngles, NUM_SERVOS, 330, 45.0);
 } 
   
@@ -88,6 +98,19 @@ void loop()
     leftVal = digitalRead(leftPin);
 
 #ifdef TWO_BUTTON_REVERSE_TURN_LAYOUT
+// #pragma message("Two-button reverse turn layout is ENABLED.")
+/*
+    Serial.print("Forward: ");
+    Serial.print(forwardVal);
+    Serial.print("Reverse: ");
+    Serial.print(reverseVal);
+    Serial.print("Left: ");
+    Serial.print(leftVal);
+    Serial.print("Right: ");
+    Serial.println(rightVal);
+*/
+
+    // Determine forward/reverse state
     if (reverseVal == HIGH)
     {
       runningWave = true;
@@ -125,17 +148,11 @@ void loop()
     if (rightVal == HIGH){
       runningWave = true;
       turnSetpoint = rightOffset;
-      
-      // waveOffsetMultiplier = 1.0;
-      // Serial.println("Turning right...");
     }
     // Left turn
     else if (leftVal == HIGH){
       runningWave = true;
       turnSetpoint = leftOffset;
-      
-      // Serial.println("Turning left...");
-      // waveOffsetMultiplier = 1.0;
     }
     // Straight movement
     else
@@ -192,6 +209,10 @@ void loop()
       {
         // s1.write(currentAngle + amplitude*cos(frequency*counter*3.14159/180+5*lag));
         robotServos[i].write(forwardAngles[i] + currentTurnAngle + amplitude*sin(waveValue + (i * lag)));
+        // Serial.print(forwardAngles[i] + currentTurnAngle + amplitude*sin(waveValue + (i * lag)));
+        // Serial.print(' ');
       }
+
+      // Serial.println();
     }
 }

@@ -1,7 +1,9 @@
 # SnakeRobot
 **Note: The code in this repository is part of an ongoing research project; portions of it are mostly ready for production use, but other portions are not, and documentation is not yet complete. In the future, stable versions will be made available as tagged releases.**
 
-This repository contains the Arduino sketches for the snake robot constructed as a research project within Penn State Behrend's mathematics program. These sketches address servos over PWM from the Arduino and accept digital user input that is assumed to originate from a 4-button keyfob; the sketches do not currently contain functionality for external sensors (though this may change in the future).
+This repository contains the Arduino sketches for the snake robot constructed as a research project within Penn State Behrend's mathematics program ("Penn Snake Behrend"). These sketches address servos over PWM from the Arduino and accept digital user input that is assumed to originate from a 4-button keyfob; the sketches do not currently contain functionality for external sensors (though this may change in the future).
+
+See [the project page on Dr. Joseph Paullet's faculty website](http://math.bd.psu.edu/faculty/paullet/robotics.html) for more general information about this project.
 
 ## Getting Started
 
