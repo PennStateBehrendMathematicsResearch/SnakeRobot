@@ -3,15 +3,22 @@ Remote control file for serpentine motion
 of a snake robot with 12 servos
 */
 
-#include <Servo.h>
-
-#include <SnakeRobotShared.h>
-
 // Compiler flag to set a button layout which uses two buttons for reverse turns; if not set, a single-button layout that persists movement direction for turns will be used (see README.md in
 // the Serpentine folder for more information)
 // #define TWO_BUTTON_REVERSE_TURN_LAYOUT
 
-#define USE_HEAD_SETTING_KNOBS
+// #define USE_HEAD_SETTING_KNOBS
+
+#define USE_SERIAL_COMMANDS
+
+#include <Servo.h>
+
+#include <SnakeRobotShared.h>
+// #include <SerialCommands.h>
+
+#ifdef USE_SERIAL_COMMANDS
+#include <CommandParser.h>
+#endif
 
 // Total number of robot servos
 const unsigned short NUM_SERVOS = 12;
@@ -46,6 +53,10 @@ int rightOffset = 7; // Right turn offset
 int leftOffset = -7; // Left turn offset
 int startPause = 5000;  // Delay time to position robot
 
+const float AMPLITUDE_RAMP_RATE = 15.0,
+            PHASE_LAG_RAMP_RATE = 0.2;
+
+#ifdef USE_HEAD_SETTING_KNOBS
 const int AMPLITUDE_SETTING_PIN = 5,
           PHASE_LAG_SETTING_PIN = 4;
 
@@ -59,48 +70,87 @@ const float AMPLITUDE_SETTING_MIN_VALUE = 20.0,
             PHASE_LAG_SETTING_MIN_VALUE = (M_PI / 12.0),
             PHASE_LAG_SETTING_MAX_VALUE = (M_PI / 3.0);
 
-const float AMPLITUDE_RAMP_RATE = 15.0,
-            PHASE_LAG_RAMP_RATE = 0.2;
-
-#ifdef USE_HEAD_SETTING_KNOBS
-void updateAmplitude(bool enableRamp, float rampElapsedTime = 0.0)
+float getKnobAmplitude()
 {
   float amplitudeRatio = static_cast<float>((analogRead(AMPLITUDE_SETTING_PIN) - AMPLITUDE_SETTING_MIN_INPUT))
                          / (AMPLITUDE_SETTING_MAX_INPUT - AMPLITUDE_SETTING_MIN_INPUT);
 
-  float amplitudeSetpoint = linearInterpolate(AMPLITUDE_SETTING_MIN_VALUE, AMPLITUDE_SETTING_MAX_VALUE, amplitudeRatio);
-  
-  if(enableRamp)
-  {
-    float maxChange = rampElapsedTime * AMPLITUDE_RAMP_RATE;
-    amplitude = coerceToRange(amplitude - maxChange, amplitude + maxChange, amplitudeSetpoint);
-  }
-  else
-  {
-    amplitude = amplitudeSetpoint;
-  }
+  return linearInterpolate(AMPLITUDE_SETTING_MIN_VALUE, AMPLITUDE_SETTING_MAX_VALUE, amplitudeRatio);
 }
 
-float updatePhaseLag(bool enableRamp, float rampElapsedTime = 0.0)
+float getKnobPhaseLag()
 {
   float phaseLagRatio = static_cast<float>((analogRead(PHASE_LAG_SETTING_PIN) - PHASE_LAG_SETTING_MIN_INPUT))
                          / (PHASE_LAG_SETTING_MAX_INPUT - PHASE_LAG_SETTING_MIN_INPUT);
 
-  float phaseLagSetpoint = linearInterpolate(PHASE_LAG_SETTING_MIN_VALUE, PHASE_LAG_SETTING_MAX_VALUE, phaseLagRatio);
+  return linearInterpolate(PHASE_LAG_SETTING_MIN_VALUE, PHASE_LAG_SETTING_MAX_VALUE, phaseLagRatio);
+}
+#endif
 
-  if(enableRamp)
+#ifdef USE_SERIAL_COMMANDS
+void frequencyCommandHandler(float* paramArray, int numParams)
+{
+  if(numParams == 1)
   {
-    float maxChange = rampElapsedTime * PHASE_LAG_RAMP_RATE;
-    phaseLag = coerceToRange(phaseLag - maxChange, phaseLag + maxChange, phaseLagSetpoint);
-  }
-  else
-  {
-    phaseLag = phaseLagSetpoint;
+    frequency = paramArray[0];
+    Serial.print(F("Frequency set to "));
+    Serial.println(frequency);
   }
 }
-#else
-#define updateAmplitude(enableRamp, ...)
-#define updatePhaseLag(enableRamp, ...)
+  #ifndef USE_HEAD_SETTING_KNOBS
+float amplitudeSetpoint = amplitude;
+float phaseLagSetpoint = phaseLag;
+
+void amplitudeCommandHandler(float* paramArray, int numParams)
+{
+  if(numParams == 1)
+  {
+    amplitudeSetpoint = paramArray[0];
+    Serial.print(F("Amplitude setpoint set to "));
+    Serial.println(amplitudeSetpoint);
+  }
+}
+
+void phaseLagCommandHandler(float* paramArray, int numParams)
+{
+  bool phaseLagSet = false;
+  
+  if(numParams == 1)
+  {
+    phaseLagSetpoint = paramArray[0];
+
+    Serial.print(F("Phase lag setpoint set to "));
+    Serial.println(phaseLagSetpoint);
+  }
+  else if(numParams == 2)
+  {
+    if(paramArray[1] != 0.0)
+    {
+      phaseLagSetpoint = (paramArray[0] / paramArray[1]) * M_PI;
+
+      Serial.print(F("Phase lag setpoint set to "));
+      Serial.println(phaseLagSetpoint);
+    }
+    else
+    {
+      Serial.println(F("Error: The denominator value given is zero."));
+    }
+  }
+}
+
+ParsedCommandHandler commandArray[] = {{"setamp", 1, amplitudeCommandHandler}, {"setpl", 2, phaseLagCommandHandler}, {"setfreq", 1, frequencyCommandHandler}};
+  #else
+ParsedCommandHandler commandArray[] = {{"setfreq", 1, frequencyCommandHandler}};
+  #endif
+
+void invalidCommandHandler(char* commandName)
+{
+  Serial.print(F("Error: The name of the command entered (\""));
+  Serial.print(commandName);
+  Serial.println(F("\") is invalid."));
+}
+
+CommandParser serialParser(&Serial, 16, commandArray, sizeof(commandArray) / sizeof(ParsedCommandHandler*), invalidCommandHandler);
 #endif
 
 float turnSetpoint = 0.0; // Center angle set point
@@ -115,7 +165,8 @@ unsigned long currentTimeStamp,
 
 void setup() 
 { 
-  // Serial.begin(115200);
+  Serial.begin(115200);
+  Serial.println(F("Program execution has started."));
   
   // Set movement pins as inputs
   pinMode(forwardPin, INPUT);
@@ -136,8 +187,10 @@ void setup()
   int portNumbers[NUM_SERVOS];
   float initialValues[NUM_SERVOS];
 
-  updateAmplitude(false);
-  updatePhaseLag(false);
+#ifdef USE_HEAD_SETTING_KNOBS
+  amplitude = getKnobAmplitude();
+  phaseLag = getKnobPhaseLag();
+#endif
   
   for(int i = 0; i < NUM_SERVOS; i++)
   {
@@ -158,6 +211,20 @@ void loop()
     reverseVal = digitalRead(reversePin);
     rightVal = digitalRead(rightPin);
     leftVal = digitalRead(leftPin);
+
+#ifdef USE_SERIAL_COMMANDS
+    if(Serial.available())
+    {
+      serialParser.parseCommand();
+
+      /*
+      if(!resultValue)
+      {
+        Serial.println(F("The name of the command entered is invalid."));
+      }
+      */
+    }
+#endif
 
 /*
     for(int i = 0; i <= 5; i++)
@@ -269,8 +336,15 @@ void loop()
       float elapsedTime = (currentTimeStamp - lastTimeStamp) / 1000.0;
       lastTimeStamp = currentTimeStamp;
 
-      updateAmplitude(true, elapsedTime);
-      updatePhaseLag(true, elapsedTime);
+#ifdef USE_HEAD_SETTING_KNOBS
+      amplitude = getRampedValue(amplitude, getKnobAmplitude(), AMPLITUDE_RAMP_RATE, elapsedTime);
+      phaseLag = getRampedValue(phaseLag, getKnobPhaseLag(), PHASE_LAG_RAMP_RATE, elapsedTime);
+#else
+  #ifdef USE_SERIAL_COMMANDS
+      amplitude = getRampedValue(amplitude, amplitudeSetpoint, AMPLITUDE_RAMP_RATE, elapsedTime);
+      phaseLag = getRampedValue(phaseLag, phaseLagSetpoint, PHASE_LAG_RAMP_RATE, elapsedTime);
+  #endif
+#endif
 
       /*
       Serial.print("Current amplitude: ");

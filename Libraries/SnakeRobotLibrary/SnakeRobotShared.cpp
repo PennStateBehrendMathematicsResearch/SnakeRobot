@@ -23,6 +23,12 @@ float linearInterpolate(float startValue, float endValue, float interpolateValue
   return (startValue + (endValue - startValue) * interpolateValue);
 }
 
+float getRampedValue(float currentValue, float setpoint, float rampRate, float elapsedTime)
+{
+  float maxChange = elapsedTime * rampRate;
+  return coerceToRange(currentValue - maxChange, currentValue + maxChange, setpoint);
+}
+
 void robotServoSetup(Servo* servoArray, const int* portNumbers, const float* initialValues, const float* setupStartAngles, int arraySize, unsigned long setupPauseLength, float rampRate)
 {
   for(int i = 0; i < arraySize; i++)
