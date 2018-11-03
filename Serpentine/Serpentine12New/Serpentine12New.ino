@@ -11,6 +11,8 @@ of a snake robot with 12 servos
 
 #define USE_SERIAL_COMMANDS
 
+#define USE_IMMEDIATE_COMMAND
+
 #include <Servo.h>
 
 #include <SnakeRobotShared.h>
@@ -41,11 +43,6 @@ int reversePin = 16; // DIO pin corresponding to 'B'
 int leftPin = 15;    // DIO pin corresponding to 'C'
 int rightPin = 14;   // DIO pin corresponding to 'D'
 
-int forwardVal = 0;  // Remote control variables
-int reverseVal = 0;
-int rightVal = 0;
-int leftVal = 0;
-
 float frequency = 0.35; // Oscillation frequency of segments.
 float amplitude = 35.0; // Amplitude of the serpentine motion of the snake
 float phaseLag = (M_PI / 6.0); // Phase lag between segments
@@ -55,6 +52,16 @@ int startPause = 5000;  // Delay time to position robot
 
 const float AMPLITUDE_RAMP_RATE = 15.0,
             PHASE_LAG_RAMP_RATE = 0.2;
+
+float turnSetpoint = 0.0; // Center angle set point
+float currentTurnAngle = 0.0; // Current value of the center angle
+bool reverseDirection = false; // Boolean flag to store whether or not the robot is moving in a reverse direction
+float waveValue = 0.0; // Current base value for the wave generator (sine) function
+bool runningWave = false,
+     runningWavePrevious = runningWave;
+float turnRampRate = 3.0; // Maximum rate at which turn offsets are ramped (degrees per second)
+unsigned long currentTimeStamp,
+              lastTimeStamp;
 
 #ifdef USE_HEAD_SETTING_KNOBS
 const int AMPLITUDE_SETTING_PIN = 5,
@@ -94,9 +101,37 @@ void frequencyCommandHandler(float* paramArray, int numParams)
   {
     frequency = paramArray[0];
     Serial.print(F("Frequency set to "));
-    Serial.println(frequency);
+    printWithLineEnd(Serial, frequency);
   }
 }
+
+  #ifdef USE_IMMEDIATE_COMMAND
+bool immediateTimestampSet = false;
+float immediateCommandTimeout = 0.5;
+unsigned long lastImmediateCommandTimestamp;
+void immediateCommandHandler(float* paramArray, int numParams)
+{
+  if(numParams == 2)
+  {
+    frequency = abs(paramArray[0]);
+    reverseDirection = (paramArray[0] < 0.0);
+    turnSetpoint = paramArray[1];
+
+    lastImmediateCommandTimestamp = millis();
+    immediateTimestampSet = true;
+
+    Serial.print(F("runimm - Freq.: "));
+    Serial.print(frequency);
+    if(reverseDirection)
+    {
+      Serial.print(F(" (rev.)"));
+    }
+    Serial.print(F("; Turn: "));
+    printWithLineEnd(Serial, turnSetpoint);
+  }
+}
+  #endif
+
   #ifndef USE_HEAD_SETTING_KNOBS
 float amplitudeSetpoint = amplitude;
 float phaseLagSetpoint = phaseLag;
@@ -107,7 +142,7 @@ void amplitudeCommandHandler(float* paramArray, int numParams)
   {
     amplitudeSetpoint = paramArray[0];
     Serial.print(F("Amplitude setpoint set to "));
-    Serial.println(amplitudeSetpoint);
+    printWithLineEnd(Serial, amplitudeSetpoint);
   }
 }
 
@@ -120,7 +155,7 @@ void phaseLagCommandHandler(float* paramArray, int numParams)
     phaseLagSetpoint = paramArray[0];
 
     Serial.print(F("Phase lag setpoint set to "));
-    Serial.println(phaseLagSetpoint);
+    printWithLineEnd(Serial, phaseLagSetpoint);
   }
   else if(numParams == 2)
   {
@@ -129,44 +164,39 @@ void phaseLagCommandHandler(float* paramArray, int numParams)
       phaseLagSetpoint = (paramArray[0] / paramArray[1]) * M_PI;
 
       Serial.print(F("Phase lag setpoint set to "));
-      Serial.println(phaseLagSetpoint);
+      printWithLineEnd(Serial, phaseLagSetpoint);
     }
     else
     {
-      Serial.println(F("Error: The denominator value given is zero."));
+      printWithLineEnd(Serial, F("Error: The denominator value given is zero."));
     }
   }
 }
-
-ParsedCommandHandler commandArray[] = {{"setamp", 1, amplitudeCommandHandler}, {"setpl", 2, phaseLagCommandHandler}, {"setfreq", 1, frequencyCommandHandler}};
-  #else
-ParsedCommandHandler commandArray[] = {{"setfreq", 1, frequencyCommandHandler}};
   #endif
+  
+ParsedCommandHandler commandArray[] = {{"setfreq", 1, frequencyCommandHandler}
+  #ifndef USE_HEAD_SETTING_KNOBS
+    , {"setamp", 1, amplitudeCommandHandler}, {"setpl", 2, phaseLagCommandHandler}
+  #endif
+  #ifdef USE_IMMEDIATE_COMMAND
+    , {"runimm", 2, immediateCommandHandler}
+  #endif
+  };
 
 void invalidCommandHandler(char* commandName)
 {
   Serial.print(F("Error: The name of the command entered (\""));
   Serial.print(commandName);
-  Serial.println(F("\") is invalid."));
+  printWithLineEnd(Serial, F("\") is invalid."));
 }
 
 CommandParser serialParser(&Serial, 16, commandArray, sizeof(commandArray) / sizeof(ParsedCommandHandler*), invalidCommandHandler);
 #endif
 
-float turnSetpoint = 0.0; // Center angle set point
-float currentTurnAngle = 0.0; // Current value of the center angle
-bool reverseDirection = false; // Boolean flag to store whether or not the robot is moving in a reverse direction
-float waveValue = 0.0; // Current base value for the wave generator (sine) function
-bool runningWave = false,
-     runningWavePrevious = runningWave;
-float turnRampRate = 3.0; // Maximum rate at which turn offsets are ramped (degrees per second)
-unsigned long currentTimeStamp,
-              lastTimeStamp;
-
 void setup() 
 { 
   Serial.begin(115200);
-  Serial.println(F("Program execution has started."));
+  printWithLineEnd(Serial, F("Program execution has started."));
   
   // Set movement pins as inputs
   pinMode(forwardPin, INPUT);
@@ -206,40 +236,35 @@ void setup()
   
 void loop() 
 {
-  //  Read movement pins
-    forwardVal = digitalRead(forwardPin);
-    reverseVal = digitalRead(reversePin);
-    rightVal = digitalRead(rightPin);
-    leftVal = digitalRead(leftPin);
-
 #ifdef USE_SERIAL_COMMANDS
     if(Serial.available())
     {
       serialParser.parseCommand();
-
-      /*
-      if(!resultValue)
-      {
-        Serial.println(F("The name of the command entered is invalid."));
-      }
-      */
     }
 #endif
 
-/*
-    for(int i = 0; i <= 5; i++)
+#if (defined USE_SERIAL_COMMANDS) && (defined USE_IMMEDIATE_COMMAND)
+  if(immediateTimestampSet && (millis() - lastImmediateCommandTimestamp) / 1000.0 <= immediateCommandTimeout)
+  {
+    runningWave = true;
+  }
+  else
+  {
+    if(runningWavePrevious)
     {
-      Serial.print("Pin ");
-      Serial.print(i);
-      Serial.print(": ");
-      Serial.print(analogRead(i));
-      Serial.print(" ");
+      printWithLineEnd(Serial, F("The last immediate command has timed out."));
     }
+    
+    runningWave = false;
+  }
+#else
+  //  Read movement pins
+  int forwardVal = digitalRead(forwardPin),
+      reverseVal = digitalRead(reversePin),
+      rightVal = digitalRead(rightPin),
+      leftVal = digitalRead(leftPin);
 
-    Serial.println();
-*/
-
-#ifdef TWO_BUTTON_REVERSE_TURN_LAYOUT
+  #ifdef TWO_BUTTON_REVERSE_TURN_LAYOUT
 // #pragma message("Two-button reverse turn layout is ENABLED.")
 /*
     Serial.print("Forward: ");
@@ -249,7 +274,7 @@ void loop()
     Serial.print("Left: ");
     Serial.print(leftVal);
     Serial.print("Right: ");
-    Serial.println(rightVal);
+    printWithLineEnd(Serial, rightVal);
 */
 
     // Determine forward/reverse state
@@ -285,7 +310,7 @@ void loop()
     {
       runningWave = false;
     }
-#else
+  #else
     // Right turn
     if (rightVal == HIGH){
       runningWave = true;
@@ -317,6 +342,7 @@ void loop()
     {
       runningWave = false;
     }
+  #endif
 #endif
 
     // If the robot has just started running
@@ -325,8 +351,6 @@ void loop()
       // Reset the last time stamp to the current millisecond timer value
       lastTimeStamp = millis();
     }
-
-    runningWavePrevious = runningWave;
 
     // If the robot is running
     if(runningWave)
@@ -350,7 +374,7 @@ void loop()
       Serial.print("Current amplitude: ");
       Serial.print(amplitude);
       Serial.print(" Current phase lag: ");
-      Serial.println(phaseLag);
+      printWithLineEnd(Serial, phaseLag);
       */
 
       // Calculate the new base wave generator value
@@ -361,7 +385,7 @@ void loop()
 
       // Calculate the new center angle
       currentTurnAngle = coerceToRange(currentTurnAngle - maxAngleChange, currentTurnAngle + maxAngleChange, turnSetpoint);
-      // Serial.println("Current center angle: " + String(currentCenterAngle));
+      // printWithLineEnd(Serial, "Current center angle: " + String(currentCenterAngle));
 
       // Loop to update robot servos
       for(int i = 0; i < NUM_SERVOS; i++)
@@ -372,6 +396,8 @@ void loop()
         // Serial.print(' ');
       }
 
-      // Serial.println();
+      // printWithLineEnd(Serial, );
     }
+
+    runningWavePrevious = runningWave;
 }

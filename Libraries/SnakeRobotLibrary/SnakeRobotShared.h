@@ -16,6 +16,13 @@ struct BisectionResult
   float value;
 };
 
+template<typename OutputType>
+inline void printWithLineEnd(Stream& outStream, const OutputType& data)
+{
+  outStream.print(data);
+  outStream.print('\n');
+}
+
 float coerceToRange(float lowerBound, float upperBound, float value);
 float linearInterpolate(float startValue, float endValue, float interpolateValue);
 float getRampedValue(float currentValue, float setpoint, float rampRate, float elapsedTime);
