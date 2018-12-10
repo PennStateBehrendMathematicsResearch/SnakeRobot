@@ -7,7 +7,7 @@ of a snake robot with 12 servos
 // the Serpentine folder for more information)
 // #define TWO_BUTTON_REVERSE_TURN_LAYOUT
 
-// #define USE_HEAD_SETTING_KNOBS
+#define USE_HEAD_SETTING_KNOBS
 
 #define USE_SERIAL_COMMANDS
 
