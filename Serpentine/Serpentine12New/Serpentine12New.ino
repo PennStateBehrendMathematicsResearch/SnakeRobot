@@ -7,11 +7,15 @@ of a snake robot with 12 servos
 // the Serpentine folder for more information)
 // #define TWO_BUTTON_REVERSE_TURN_LAYOUT
 
-#define USE_HEAD_SETTING_KNOBS
+// #define USE_HEAD_SETTING_KNOBS
 
 #define USE_SERIAL_COMMANDS
 
+// Note: The USE_SERIAL_COMMANDS option is required to use this option
 #define USE_IMMEDIATE_COMMAND
+
+// Note: The USE_SERIAL_COMMANDS option is required to use this option
+#define USE_SOFTWARE_SERIAL
 
 #include <Servo.h>
 
@@ -19,6 +23,21 @@ of a snake robot with 12 servos
 // #include <SerialCommands.h>
 
 #ifdef USE_SERIAL_COMMANDS
+  #ifdef USE_SOFTWARE_SERIAL
+    #ifndef USE_IMMEDIATE_COMMAND
+#error "The default port configuration, designed for an Arduino Uno, creates a contention between the keyfob and SoftwareSerial pins. Please make sure these pins are changed to use both features simultaneously on a larger board, then disable this error."
+    #endif
+
+#include <SoftwareSerial.h>
+
+SoftwareSerial commandSoftSerial(A2, A3);
+#define commandSerial commandSoftSerial
+#define COMMAND_SERIAL_BAUD_RATE 38400
+
+  #else
+    #define commandSerial Serial
+    #define COMMAND_SERIAL_BAUD_RATE 115200
+  #endif
 #include <CommandParser.h>
 #endif
 
@@ -37,11 +56,13 @@ int getServoPortNumber(int servoNumber)
   
 // Define variables:
 
+#if !((defined USE_SERIAL_COMMANDS) && (defined USE_IMMEDIATE_COMMAND)) 
 // Remote control movement pins
 int forwardPin = 17; // DIO pin corresponding to 'A'
 int reversePin = 16; // DIO pin corresponding to 'B'
 int leftPin = 15;    // DIO pin corresponding to 'C'
 int rightPin = 14;   // DIO pin corresponding to 'D'
+#endif
 
 float frequency = 0.35; // Oscillation frequency of segments.
 float amplitude = 35.0; // Amplitude of the serpentine motion of the snake
@@ -100,8 +121,8 @@ void frequencyCommandHandler(float* paramArray, int numParams)
   if(numParams == 1)
   {
     frequency = paramArray[0];
-    Serial.print(F("Frequency set to "));
-    printWithLineEnd(Serial, frequency);
+    commandSerial.print(F("Frequency set to "));
+    printWithLineEnd(commandSerial, frequency);
   }
 }
 
@@ -120,14 +141,14 @@ void immediateCommandHandler(float* paramArray, int numParams)
     lastImmediateCommandTimestamp = millis();
     immediateTimestampSet = true;
 
-    Serial.print(F("runimm - Freq.: "));
-    Serial.print(frequency);
+    commandSerial.print(F("runimm - Freq.: "));
+    commandSerial.print(frequency);
     if(reverseDirection)
     {
-      Serial.print(F(" (rev.)"));
+      commandSerial.print(F(" (rev.)"));
     }
-    Serial.print(F("; Turn: "));
-    printWithLineEnd(Serial, turnSetpoint);
+    commandSerial.print(F("; Turn: "));
+    printWithLineEnd(commandSerial, turnSetpoint);
   }
 }
   #endif
@@ -141,8 +162,8 @@ void amplitudeCommandHandler(float* paramArray, int numParams)
   if(numParams == 1)
   {
     amplitudeSetpoint = paramArray[0];
-    Serial.print(F("Amplitude setpoint set to "));
-    printWithLineEnd(Serial, amplitudeSetpoint);
+    commandSerial.print(F("Amplitude setpoint set to "));
+    printWithLineEnd(commandSerial, amplitudeSetpoint);
   }
 }
 
@@ -154,8 +175,8 @@ void phaseLagCommandHandler(float* paramArray, int numParams)
   {
     phaseLagSetpoint = paramArray[0];
 
-    Serial.print(F("Phase lag setpoint set to "));
-    printWithLineEnd(Serial, phaseLagSetpoint);
+    commandSerial.print(F("Phase lag setpoint set to "));
+    printWithLineEnd(commandSerial, phaseLagSetpoint);
   }
   else if(numParams == 2)
   {
@@ -163,12 +184,12 @@ void phaseLagCommandHandler(float* paramArray, int numParams)
     {
       phaseLagSetpoint = (paramArray[0] / paramArray[1]) * M_PI;
 
-      Serial.print(F("Phase lag setpoint set to "));
-      printWithLineEnd(Serial, phaseLagSetpoint);
+      commandSerial.print(F("Phase lag setpoint set to "));
+      printWithLineEnd(commandSerial, phaseLagSetpoint);
     }
     else
     {
-      printWithLineEnd(Serial, F("Error: The denominator value given is zero."));
+      printWithLineEnd(commandSerial, F("Error: The denominator value given is zero."));
     }
   }
 }
@@ -185,19 +206,20 @@ ParsedCommandHandler commandArray[] = {{"setfreq", 1, frequencyCommandHandler}
 
 void invalidCommandHandler(char* commandName)
 {
-  Serial.print(F("Error: The name of the command entered (\""));
-  Serial.print(commandName);
-  printWithLineEnd(Serial, F("\") is invalid."));
+  commandSerial.print(F("Error: The name of the command entered (\""));
+  commandSerial.print(commandName);
+  printWithLineEnd(commandSerial, F("\") is invalid."));
 }
 
-CommandParser serialParser(&Serial, 16, commandArray, sizeof(commandArray) / sizeof(ParsedCommandHandler*), invalidCommandHandler);
+CommandParser serialParser(&commandSerial, 16, commandArray, sizeof(commandArray) / sizeof(ParsedCommandHandler*), invalidCommandHandler);
 #endif
 
 void setup() 
 { 
-  Serial.begin(115200);
-  printWithLineEnd(Serial, F("Program execution has started."));
-  
+  commandSerial.begin(COMMAND_SERIAL_BAUD_RATE);
+  printWithLineEnd(commandSerial, F("Program execution has started."));
+
+#if !((defined USE_SERIAL_COMMANDS) && (defined USE_IMMEDIATE_COMMAND)) 
   // Set movement pins as inputs
   pinMode(forwardPin, INPUT);
   pinMode(reversePin, INPUT);
@@ -209,6 +231,7 @@ void setup()
   digitalWrite(reversePin, LOW);
   digitalWrite(rightPin, LOW);
   digitalWrite(leftPin, LOW);
+#endif
 
   // Pause to position robot
   delay(startPause);
@@ -237,7 +260,7 @@ void setup()
 void loop() 
 {
 #ifdef USE_SERIAL_COMMANDS
-    if(Serial.available())
+    if(commandSerial.available())
     {
       serialParser.parseCommand();
     }
@@ -252,7 +275,7 @@ void loop()
   {
     if(runningWavePrevious)
     {
-      printWithLineEnd(Serial, F("The last immediate command has timed out."));
+      printWithLineEnd(commandSerial, F("The last immediate command has timed out."));
     }
     
     runningWave = false;
