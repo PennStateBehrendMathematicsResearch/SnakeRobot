@@ -175,9 +175,9 @@ class BluetoothThread(threading.Thread):
                                 print('recv call duration:', elapsedTime)
 
                     if receivedData:
-                        receivingBuffer += receivedData.decode('ascii')
-                        
-                        print('Received data:', receivedData.decode('ascii'))
+                        receivedString = receivedData.decode('ascii', 'replace')
+                        receivingBuffer += receivedString
+                        print('Received data:', receivedString)
                         # print('Bytes:', [thisByte for thisByte in receivedData])
                         # self.receivedCallback(receivedData)
                         
@@ -201,7 +201,7 @@ class BluetoothThread(threading.Thread):
                     
         
 def robotResponseHandler(responseStr):
-    print('Received ', responseStr)
+    print('Received response:', responseStr)
 
     if not(windowClosing):
         robotResponseText.config(state=tkinter.NORMAL)
