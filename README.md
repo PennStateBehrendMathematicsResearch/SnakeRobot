@@ -9,16 +9,23 @@ See [the project page on Dr. Joseph Paullet's faculty website](http://math.bd.ps
 
 ### Installation
 
-If you are using the Arduino IDE, then, as of version 1.8.5, the folder"SnakeRobotLibrary" will need to be copied into the IDE's "libraries" folder. On Windows, this can be done by running the batch file located at "Libraries\locallibinstall.bat"; this can also be done manually as follows:
+#### Arduino IDE
+
+As of version 1.8.5, the folder "SnakeRobotLibrary" will need to be copied into the IDE's "libraries" folder. On Windows, this can be done by running the batch file located at "Libraries\locallibinstall.bat"; this can also be done manually as follows:
 
 1. Open the Arduino IDE and go to "File » Preferences".
 
 2. Copy the "Sketchbook location" path and open it in another file explorer window.
+
 3. Navigate to the "libraries" folder and copy the "SnakeRobotLibrary" folder (within "Libraries") there.
 
-For other IDEs, adding the "SnakeRobotLibrary" folder (within "Libraries") to the list of include directories should allow the sketches to compile.
+**Note:** This batch file will have to be re-run (or the files manually re-copied) each time you need to compile sketches with updated files from the "SnakeRobotLibraries" folder.
 
-### Provided Sketches
+#### Other IDEs
+
+Adding the "SnakeRobotLibrary" folder (within "Libraries") to the list of include directories should allow the sketches to compile.
+
+### Using Provided Sketches
 
 The folders "Serpentine", "Rectilinear", and "Concertina" contain sketches for the respective gaits; see "README.md" within each of these folders for specific information on customizing the provided sketches for your robot.
 
