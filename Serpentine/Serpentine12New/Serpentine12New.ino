@@ -15,7 +15,7 @@ of a snake robot with 12 servos
 #define USE_IMMEDIATE_COMMAND
 
 // Note: The USE_SERIAL_COMMANDS option is required to use this option
-#define USE_SOFTWARE_SERIAL
+// #define USE_SOFTWARE_SERIAL
 
 #include <Servo.h>
 
@@ -36,7 +36,7 @@ SoftwareSerial commandSoftSerial(A2, A3);
 
   #else
     #define commandSerial Serial
-    #define COMMAND_SERIAL_BAUD_RATE 115200
+    #define COMMAND_SERIAL_BAUD_RATE 38400
   #endif
 #include <CommandParser.h>
 #endif

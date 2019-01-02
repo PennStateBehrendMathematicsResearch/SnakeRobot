@@ -40,6 +40,7 @@ int CommandParser::getTokenFromStream(char* readBuf, int READ_BUF_LENGTH, int re
 	  else
 	  {
 		  char thisChar = this->inputStream->read();
+      this->inputStream->write(thisChar);
 
 		  if (isspace(thisChar))
 		  {
@@ -114,6 +115,8 @@ bool CommandParser::readToCommandEnd(bool* serialEnded)
 
 void CommandParser::processCurrentCommand()
 {
+  this->inputStream->print(F("[END]\n"));
+  
 	if (this->foundCommand != NULL)
 	{
 		(*(this->foundCommand->commandHandler))(this->paramBuf, this->paramIndex);
