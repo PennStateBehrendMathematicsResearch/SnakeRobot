@@ -12,7 +12,7 @@ of a snake robot with 12 servos
 #define USE_SERIAL_COMMANDS
 
 // Note: The USE_SERIAL_COMMANDS option is required to use this option
-#define USE_IMMEDIATE_COMMAND
+#define USE_RC_COMMANDS
 
 // Note: The USE_SERIAL_COMMANDS option is required to use this option
 // #define USE_SOFTWARE_SERIAL
@@ -24,7 +24,7 @@ of a snake robot with 12 servos
 
 #ifdef USE_SERIAL_COMMANDS
   #ifdef USE_SOFTWARE_SERIAL
-    #ifndef USE_IMMEDIATE_COMMAND
+    #ifndef USE_RC_COMMANDS
 #error "The default port configuration, designed for an Arduino Uno, creates a contention between the keyfob and SoftwareSerial pins. Please make sure these pins are changed to use both features simultaneously on a larger board, then disable this error."
     #endif
 
@@ -56,7 +56,7 @@ int getServoPortNumber(int servoNumber)
   
 // Define variables:
 
-#if !((defined USE_SERIAL_COMMANDS) && (defined USE_IMMEDIATE_COMMAND)) 
+#if !((defined USE_SERIAL_COMMANDS) && (defined USE_RC_COMMANDS)) 
 // Remote control movement pins
 int forwardPin = 17; // DIO pin corresponding to 'A'
 int reversePin = 16; // DIO pin corresponding to 'B'
@@ -126,10 +126,58 @@ void frequencyCommandHandler(float* paramArray, int numParams)
   }
 }
 
-  #ifdef USE_IMMEDIATE_COMMAND
-bool immediateTimestampSet = false;
-float immediateCommandTimeout = 0.5;
-unsigned long lastImmediateCommandTimestamp;
+  #ifdef USE_RC_COMMANDS
+class Watchdog
+{
+private:
+  bool watchdogTimestampSet = false;
+  float watchdogCommandTimeout;
+  unsigned long lastWatchdogTimestamp;
+public:
+  Watchdog(float timeout):
+    watchdogCommandTimeout(timeout)
+  {}
+
+  void feed()
+  {
+    this->lastWatchdogTimestamp = millis();
+    this->watchdogTimestampSet = true;
+  }
+  
+  bool isFed()
+  {
+    return (this->watchdogTimestampSet && (millis() - this->lastWatchdogTimestamp) / 1000.0 <= this->watchdogCommandTimeout);
+  }
+};
+
+Watchdog RCWatchdog(0.5);
+bool RCWatchdogEnabled = true,
+     RCWatchdogFedPrev = false;
+
+unsigned long RCEndTimestamp = 0;
+
+void setWatchdogHandler(float* paramArray, int numParams)
+{
+  if(numParams == 1)
+  {
+    RCWatchdogEnabled = (paramArray[0] != 0.0);
+    commandSerial.print(F("Watchdog "));
+    printWithLineEnd(commandSerial, (RCWatchdogEnabled ? F("enabled.") : F("disabled.")));
+
+    if(RCWatchdogEnabled)
+    {
+      RCWatchdog.feed();
+    }
+  }
+}
+
+/*
+void feedWatchdogHandler(float* paramArray, int numParams)
+{
+  RCWatchdog.feed();
+}
+*/
+
 void immediateCommandHandler(float* paramArray, int numParams)
 {
   if(numParams == 2)
@@ -137,9 +185,9 @@ void immediateCommandHandler(float* paramArray, int numParams)
     frequency = abs(paramArray[0]);
     reverseDirection = (paramArray[0] < 0.0);
     turnSetpoint = paramArray[1];
-
-    lastImmediateCommandTimestamp = millis();
-    immediateTimestampSet = true;
+    RCEndTimestamp = 0;
+    
+    RCWatchdog.feed();
 
     commandSerial.print(F("runimm - Freq.: "));
     commandSerial.print(frequency);
@@ -149,6 +197,30 @@ void immediateCommandHandler(float* paramArray, int numParams)
     }
     commandSerial.print(F("; Turn: "));
     printWithLineEnd(commandSerial, turnSetpoint);
+  }
+}
+
+void runForTimeHandler(float* paramArray, int numParams)
+{
+  if(numParams == 3)
+  {
+    frequency = abs(paramArray[0]);
+    reverseDirection = (paramArray[0] < 0.0);
+    turnSetpoint = paramArray[1];
+    RCEndTimestamp = millis() + static_cast<unsigned long>(paramArray[2]);
+
+    RCWatchdog.feed();
+
+    commandSerial.print(F("runtm - Freq.: "));
+    commandSerial.print(frequency);
+    if(reverseDirection)
+    {
+      commandSerial.print(F(" (rev.)"));
+    }
+    commandSerial.print(F("; Turn: "));
+    commandSerial.print(turnSetpoint);
+    commandSerial.print(F("; Time: "));
+    printWithLineEnd(commandSerial, static_cast<unsigned long>(paramArray[2]));
   }
 }
   #endif
@@ -199,10 +271,11 @@ ParsedCommandHandler commandArray[] = {{"setfreq", 1, frequencyCommandHandler}
   #ifndef USE_HEAD_SETTING_KNOBS
     , {"setamp", 1, amplitudeCommandHandler}, {"setpl", 2, phaseLagCommandHandler}
   #endif
-  #ifdef USE_IMMEDIATE_COMMAND
-    , {"runimm", 2, immediateCommandHandler}
+  #ifdef USE_RC_COMMANDS
+    , {"setwdg", 1, setWatchdogHandler}, {"runtm", 3, runForTimeHandler}, {"runimm", 2, immediateCommandHandler}
   #endif
   };
+// {"fdw", 0, feedWatchdogHandler}
 
 void invalidCommandHandler(char* commandName)
 {
@@ -219,7 +292,7 @@ void setup()
   commandSerial.begin(COMMAND_SERIAL_BAUD_RATE);
   printWithLineEnd(commandSerial, F("Program execution has started."));
 
-#if !((defined USE_SERIAL_COMMANDS) && (defined USE_IMMEDIATE_COMMAND)) 
+#if !((defined USE_SERIAL_COMMANDS) && (defined USE_RC_COMMANDS)) 
   // Set movement pins as inputs
   pinMode(forwardPin, INPUT);
   pinMode(reversePin, INPUT);
@@ -266,20 +339,36 @@ void loop()
     }
 #endif
 
-#if (defined USE_SERIAL_COMMANDS) && (defined USE_IMMEDIATE_COMMAND)
-  if(immediateTimestampSet && (millis() - lastImmediateCommandTimestamp) / 1000.0 <= immediateCommandTimeout)
+#if (defined USE_SERIAL_COMMANDS) && (defined USE_RC_COMMANDS)
+  bool watchdogFed = RCWatchdog.isFed();
+  if(!RCWatchdogEnabled || watchdogFed)
   {
-    runningWave = true;
+    if(RCEndTimestamp != 0)
+    {
+      runningWave = (millis() < RCEndTimestamp);
+
+      if(!runningWave && runningWavePrevious)
+      {
+        printWithLineEnd(commandSerial, F("Timed run ended."));
+      }
+    }
+    else
+    {
+      runningWave = true;
+    }
   }
   else
   {
-    if(runningWavePrevious)
+    if(RCWatchdogFedPrev)
     {
-      printWithLineEnd(commandSerial, F("The last immediate command has timed out."));
+      printWithLineEnd(commandSerial, F("Watchdog not fed."));
     }
-    
+
+    RCEndTimestamp = 0;
     runningWave = false;
   }
+
+  RCWatchdogFedPrev = watchdogFed;
 #else
   //  Read movement pins
   int forwardVal = digitalRead(forwardPin),
