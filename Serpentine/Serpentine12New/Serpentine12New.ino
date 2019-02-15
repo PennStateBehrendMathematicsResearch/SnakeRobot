@@ -67,7 +67,12 @@ int leftPin = 15;    // DIO pin corresponding to 'C'
 int rightPin = 14;   // DIO pin corresponding to 'D'
 #endif
 
+#if ((defined USE_SERIAL_COMMANDS) && (defined USE_RC_COMMANDS))
+float frequency = 0.0; // Oscillation frequency of segments.
+#else
 float frequency = 0.35; // Oscillation frequency of segments.
+#endif
+
 float amplitude = 35.0; // Amplitude of the serpentine motion of the snake
 float phaseLag = (M_PI / 6.0); // Phase lag between segments
 int rightOffset = 7; // Right turn offset
@@ -346,18 +351,15 @@ void loop()
   bool watchdogFed = RCWatchdog.isFed();
   if(!RCWatchdogEnabled || watchdogFed)
   {
-    if(RCEndTimestamp != 0)
+    runningWave = true;
+    
+    if(RCEndTimestamp != 0 && millis() >= RCEndTimestamp)
     {
-      runningWave = (millis() < RCEndTimestamp);
+      frequency = 0.0;
+      reverseDirection = false;
+      RCEndTimestamp = 0;
 
-      if(!runningWave && runningWavePrevious)
-      {
-        printWithLineEnd(commandSerial, F("Timed run ended."));
-      }
-    }
-    else
-    {
-      runningWave = true;
+      printWithLineEnd(commandSerial, F("Timed run ended."));
     }
   }
   else
