@@ -48,6 +48,9 @@ Servo robotServos[NUM_SERVOS];
 // Servo forward angles (use to correct inaccuracies in robot assembly)
 float forwardAngles[NUM_SERVOS] = {92.0, 92.0, 92.0, 92.0, 92.0, 92.0, 92.0, 92.0, 92.0, 92.0, 92.0, 91.0};
 
+// Turn offset to compensate for hardware issues that cause the snake to skew left or right
+const double HW_TURN_OFFSET = 0.0;
+
 // This function returns the hardware port number for a given logical servo number (logical servo numbers begin from 0 at the head of the snake and increase down the snake body)
 int getServoPortNumber(int servoNumber)
 {
@@ -503,7 +506,7 @@ void loop()
       for(int i = 0; i < NUM_SERVOS; i++)
       {
         // s1.write(currentAngle + amplitude*cos(frequency*counter*3.14159/180+5*lag));
-        robotServos[i].write(forwardAngles[i] + currentTurnAngle + amplitude * sin(waveValue + (i * phaseLag)));
+        robotServos[i].write(forwardAngles[i] + currentTurnAngle + HW_TURN_OFFSET + amplitude * sin(waveValue + (i * phaseLag)));
         // Serial.print(forwardAngles[i] + currentTurnAngle + amplitude*sin(waveValue + (i * lag)));
         // Serial.print(' ');
       }
