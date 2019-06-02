@@ -55,8 +55,9 @@ void robotServoSetup(Servo* servoArray, const int* portNumbers, const float* ini
       float elapsedTime = (currentSetupTimeStamp - lastSetupTimeStamp) / 1000.0;
       lastSetupTimeStamp = currentSetupTimeStamp;
 
-      float maxAngleChange = elapsedTime * rampRate;
-      currentSetupAngle = coerceToRange(currentSetupAngle - maxAngleChange, currentSetupAngle + maxAngleChange, initialValues[i]);
+      // float maxAngleChange = elapsedTime * rampRate;
+      // currentSetupAngle = coerceToRange(currentSetupAngle - maxAngleChange, currentSetupAngle + maxAngleChange, initialValues[i]);
+      currentSetupAngle = getRampedValue(currentSetupAngle, initialValues[i], rampRate, elapsedTime);
       servoArray[i].write(currentSetupAngle);
 
       /*
