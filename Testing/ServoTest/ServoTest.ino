@@ -2,6 +2,8 @@
 
 const short NUM_SERVOS = 12;
 
+const double INIT_CENTER_ANGLE = 90.0;
+
 Servo servoArray[NUM_SERVOS];
 
 void setup() {
@@ -11,6 +13,7 @@ void setup() {
   for(int i = 0; i < NUM_SERVOS; i++)
   {
     servoArray[i].attach(13 - i);
+    servoArray[i].write(INIT_CENTER_ANGLE);
   }
 }
 
