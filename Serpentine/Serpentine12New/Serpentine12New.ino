@@ -72,6 +72,7 @@ float frequency = 0.0; // Oscillation frequency of segments.
 #else
 float frequency = 0.35; // Oscillation frequency of segments.
 #endif
+const float resetFrequency = 0.3;
 
 float amplitude = 35.0; // Amplitude of the serpentine motion of the snake
 float phaseLag = (M_PI / 6.0); // Phase lag between segments
@@ -86,8 +87,10 @@ float turnSetpoint = 0.0; // Center angle set point
 float currentTurnAngle = 0.0; // Current value of the center angle
 bool reverseDirection = false; // Boolean flag to store whether or not the robot is moving in a reverse direction
 float waveValue = 0.0; // Current base value for the wave generator (sine) function
-bool runningWave = false,
-     runningWavePrevious = runningWave;
+float waveValueSetpoint = 0.0;
+bool resettingWavePos = false;
+bool outputsEnabled = false,
+     outputsEnabledPrevious = outputsEnabled;
 float turnRampRate = 3.0; // Maximum rate at which turn offsets are ramped (degrees per second)
 unsigned long currentTimeStamp,
               lastTimeStamp;
@@ -231,6 +234,37 @@ void runForTimeHandler(float* paramArray, int numParams)
     printWithLineEnd(commandSerial, static_cast<unsigned long>(paramArray[2]));
   }
 }
+
+void resetWaveHandler(float* paramArray, int numParams)
+{
+  if(numParams == 1)
+  {
+    resettingWavePos = true;
+    waveValueSetpoint = paramArray[0];
+
+    RCWatchdog.feed();
+
+    commandSerial.print(F("Resetting wave value to "));
+    printWithLineEnd(commandSerial, waveValueSetpoint);
+  }
+  else if(numParams == 2)
+  {
+    if(paramArray[1] != 0.0)
+    {
+      resettingWavePos = true;
+      waveValueSetpoint = (paramArray[0] / paramArray[1]) * M_PI;
+
+      RCWatchdog.feed();
+
+      commandSerial.print(F("Resetting wave value to "));
+      printWithLineEnd(commandSerial, waveValueSetpoint);
+    }
+    else
+    {
+      printWithLineEnd(commandSerial, F("Error: The denominator value given is zero."));
+    }
+  }
+}
   #endif
 
   #ifndef USE_HEAD_SETTING_KNOBS
@@ -281,6 +315,7 @@ ParsedCommandHandler commandArray[] = {{"setfreq", 1, frequencyCommandHandler}
   #endif
   #ifdef USE_RC_COMMANDS
     , {"setwdg", 1, setWatchdogHandler}, {"runtm", 3, runForTimeHandler}, {"runimm", 2, immediateCommandHandler}
+    , {"rstwv", 2, resetWaveHandler}
   #endif
   };
 // {"fdw", 0, feedWatchdogHandler}
@@ -351,7 +386,7 @@ void loop()
   bool watchdogFed = RCWatchdog.isFed();
   if(!RCWatchdogEnabled || watchdogFed)
   {
-    runningWave = true;
+    outputsEnabled = true;
     
     if(RCEndTimestamp != 0 && millis() >= RCEndTimestamp)
     {
@@ -370,7 +405,7 @@ void loop()
     }
 
     RCEndTimestamp = 0;
-    runningWave = false;
+    outputsEnabled = false;
   }
 
   RCWatchdogFedPrev = watchdogFed;
@@ -397,7 +432,7 @@ void loop()
     // Determine forward/reverse state
     if (reverseVal == HIGH)
     {
-      runningWave = true;
+      outputsEnabled = true;
       reverseDirection = true;
     }
     else
@@ -408,34 +443,34 @@ void loop()
     // Right turn
     if (rightVal == HIGH)
     {
-      runningWave = true;
+      outputsEnabled = true;
       turnSetpoint = rightOffset;
     }
     // Left turn
     else if (leftVal == HIGH)
     {
-      runningWave = true;
+      outputsEnabled = true;
       turnSetpoint = leftOffset;
     }
     // Straight movement
     else if (forwardVal == HIGH || reverseVal == HIGH)
     {
-      runningWave = true;
+      outputsEnabled = true;
       turnSetpoint = 0.0;
     }
     else
     {
-      runningWave = false;
+      outputsEnabled = false;
     }
   #else
     // Right turn
     if (rightVal == HIGH){
-      runningWave = true;
+      outputsEnabled = true;
       turnSetpoint = rightOffset;
     }
     // Left turn
     else if (leftVal == HIGH){
-      runningWave = true;
+      outputsEnabled = true;
       turnSetpoint = leftOffset;
     }
     // Straight movement
@@ -446,31 +481,31 @@ void loop()
     
     // Forward motion
     if (forwardVal == HIGH){
-      runningWave = true;
+      outputsEnabled = true;
       reverseDirection = false;
     }
     // Reverse motion
     else if (reverseVal == HIGH){
-      runningWave = true;
+      outputsEnabled = true;
       reverseDirection = true;
     }
     // Stop if a turn is not being made
     else if(leftVal == LOW && rightVal == LOW)
     {
-      runningWave = false;
+      outputsEnabled = false;
     }
   #endif
 #endif
 
     // If the robot has just started running
-    if(runningWave && !runningWavePrevious)
+    if(outputsEnabled && !outputsEnabledPrevious)
     {
       // Reset the last time stamp to the current millisecond timer value
       lastTimeStamp = millis();
     }
 
     // If the robot is running
-    if(runningWave)
+    if(outputsEnabled)
     { 
       // Calculate the elapsed time 
       currentTimeStamp = millis();
@@ -494,15 +529,37 @@ void loop()
       printWithLineEnd(Serial, phaseLag);
       */
 
-      // Calculate the new base wave generator value
-      waveValue += ((-2.0 * M_PI * frequency)* (elapsedTime * (reverseDirection ? -1.0 : 1.0)));
+      if(resettingWavePos)
+      {
+        waveValue = getRampedValue(waveValue, waveValueSetpoint, resetFrequency * 2.0 * M_PI, elapsedTime);
+
+        if(waveValue == waveValueSetpoint)
+        {
+          resettingWavePos = false;
+        }
+      }
+      else
+      {
+        // Calculate the new base wave generator value
+        waveValue += ((-2.0 * M_PI * frequency) * (elapsedTime * (reverseDirection ? -1.0 : 1.0)));
+        waveValue = fmod(waveValue, 2.0 * M_PI);
+  
+        if(waveValue < 0.0)
+        {
+          waveValue += 2.0 * M_PI;
+        }
+      }
+
+      // Serial.print(F("Wave value: "));
+      // Serial.println(waveValue);
 
       // Calculate the maximum change in the current center angle
-      float maxAngleChange = turnRampRate * elapsedTime;
+      // float maxAngleChange = turnRampRate * elapsedTime;
 
       // Calculate the new center angle
-      currentTurnAngle = coerceToRange(currentTurnAngle - maxAngleChange, currentTurnAngle + maxAngleChange, turnSetpoint);
+      // currentTurnAngle = coerceToRange(currentTurnAngle - maxAngleChange, currentTurnAngle + maxAngleChange, turnSetpoint);
       // printWithLineEnd(Serial, "Current center angle: " + String(currentCenterAngle));
+      currentTurnAngle = getRampedValue(currentTurnAngle, turnSetpoint, turnRampRate, elapsedTime);
 
       // Loop to update robot servos
       for(int i = 0; i < NUM_SERVOS; i++)
@@ -516,5 +573,5 @@ void loop()
       // printWithLineEnd(Serial, );
     }
 
-    runningWavePrevious = runningWave;
+    outputsEnabledPrevious = outputsEnabled;
 }
