@@ -272,8 +272,16 @@ def updateJoystickInput():
         # print(currentJoystick.get_name(), 'axes:', currentJoystick.get_axis(0), currentJoystick.get_axis(1))
 
         try:
-            joystickFrequency = -(float(joystickFreqScaleEntry.get())) * currentJoystick.get_axis(1)
-            joystickTurnOffset = float(joystickTurnAngleScaleEntry.get()) * currentJoystick.get_axis(0)
+            joystickXValue = currentJoystick.get_axis(0)
+            if abs(joystickXValue) < float(joystickDeadbandXEntry.get()):
+                joystickXValue = 0.0
+            
+            joystickYValue = currentJoystick.get_axis(1)
+            if abs(joystickYValue) < float(joystickDeadbandYEntry.get()):
+                joystickYValue = 0.0
+            
+            joystickFrequency = -(float(joystickFreqScaleEntry.get())) * joystickYValue
+            joystickTurnOffset = float(joystickTurnAngleScaleEntry.get()) * joystickXValue
             
             applicationBluetoothThread.enqueueForSending('runimm %.3f %.3f\n' % (joystickFrequency, joystickTurnOffset))
         except ValueError:
@@ -345,12 +353,17 @@ def onWindowClose():
         mainWindow.destroy()
 
 def joystickCommandEnabledChanged():
-    if joystickEnableCheckboxState.get():
-        joystickFreqScaleEntry.config(state=tkinter.DISABLED)
-        joystickTurnAngleScaleEntry.config(state=tkinter.DISABLED)
-    else:
-        joystickFreqScaleEntry.config(state=tkinter.NORMAL)
-        joystickTurnAngleScaleEntry.config(state=tkinter.NORMAL)
+    newControlEnabledState = (tkinter.DISABLED if joystickEnableCheckboxState.get() else tkinter.NORMAL)
+
+    joystickFreqScaleEntry.config(state=newControlEnabledState)
+    joystickTurnAngleScaleEntry.config(state=newControlEnabledState)
+    joystickDeadbandXEntry.config(state=newControlEnabledState)
+    joystickDeadbandYEntry.config(state=newControlEnabledState)
+
+def clearResponses():
+    robotResponseText.config(state=tkinter.NORMAL)
+    robotResponseText.delete('1.0', tkinter.END)
+    robotResponseText.config(state=tkinter.DISABLED)
 
 # pygame.joystick.init()        
 
@@ -385,6 +398,14 @@ joystickTurnAngleScaleLabel = tkinter.Label(joystickControlFrame, text='Joystick
 joystickTurnAngleScaleEntry = tkinter.Entry(joystickControlFrame, text='7.0')
 joystickTurnAngleScaleEntry.insert(tkinter.END, '7.0')
 
+joystickDeadbandXLabel = tkinter.Label(joystickControlFrame, text='X axis deadband:')
+joystickDeadbandXEntry = tkinter.Entry(joystickControlFrame)
+joystickDeadbandXEntry.insert(tkinter.END, '0.05')
+
+joystickDeadbandYLabel = tkinter.Label(joystickControlFrame, text='Y axis deadband:')
+joystickDeadbandYEntry = tkinter.Entry(joystickControlFrame)
+joystickDeadbandYEntry.insert(tkinter.END, '0.05')
+
 holdFrequencyEntryLabel = tkinter.Label(mainWindow, text='Frequency:')
 holdFrequencyEntry = tkinter.Entry(mainWindow)
 
@@ -394,6 +415,8 @@ holdTurnEntry = tkinter.Entry(mainWindow)
 holdToggleButton = tkinter.Button(mainWindow, text='Hold', command=toggleHold, state=tkinter.DISABLED)
 holdJobIDLock = threading.Lock()
 holdJobID = None
+
+clearResponsesButton = tkinter.Button(mainWindow, text='Clear responses', command=clearResponses)
 
 connectionStateButton.grid(row=0, column=0, columnspan=5)
 joystickControlFrame.grid(row=1, column=0, columnspan=5, sticky=tkinter.EW, padx=5)
@@ -405,6 +428,10 @@ joystickFreqScaleLabel.grid(row=1, column=0, sticky=tkinter.E)
 joystickFreqScaleEntry.grid(row=1, column=1, sticky=tkinter.EW)
 joystickTurnAngleScaleLabel.grid(row=1, column=2, sticky=tkinter.E)
 joystickTurnAngleScaleEntry.grid(row=1, column=3, sticky=tkinter.EW)
+joystickDeadbandXLabel.grid(row=2, column=0, sticky=tkinter.E)
+joystickDeadbandXEntry.grid(row=2, column=1, sticky=tkinter.EW)
+joystickDeadbandYLabel.grid(row=2, column=2, sticky=tkinter.E)
+joystickDeadbandYEntry.grid(row=2, column=3, sticky=tkinter.EW)
 
 customCommandLabel.grid(row=3, column=0, sticky=tkinter.E)
 customCommandInput.grid(row=3, column=1, sticky=tkinter.EW)
@@ -414,7 +441,8 @@ holdFrequencyEntry.grid(row=4, column=1, sticky=tkinter.EW)
 holdTurnEntryLabel.grid(row=4, column=2, sticky=tkinter.E)
 holdTurnEntry.grid(row=4, column=3, sticky=tkinter.EW)
 holdToggleButton.grid(row=4, column=4, sticky=tkinter.W, padx=(5, 0))
-robotResponseTextLabel.grid(row=5, column=0, columnspan=5, sticky=tkinter.W)
+robotResponseTextLabel.grid(row=5, column=0, sticky=tkinter.W)
+clearResponsesButton.grid(row=5, column=4, sticky=tkinter.E)
 robotResponseText.grid(row=6, column=0, columnspan=5, sticky=tkinter.NSEW)
 
 mainWindow.rowconfigure(robotResponseText.grid_info()['row'], weight=1)
